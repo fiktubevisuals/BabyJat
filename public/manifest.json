@@ -1,0 +1,19 @@
+{
+  "name": "BabyJat Salon & Luxury Spa",
+  "short_name": "BabyJat",
+  "description": "Luxury Hair Styling, Spa Services, Product Shop, and Client Self-Service Portal",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fffbff",
+  "theme_color": "#b60055",
+  "categories": ["beauty", "lifestyle", "shopping"],
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

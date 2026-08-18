@@ -1,0 +1,6 @@
+{
+  "name": "BabyJat",
+  "description": "High-end salon management and client booking platform",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

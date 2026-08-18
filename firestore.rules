@@ -1,0 +1,232 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Primitives
+    function isValidId(id) { 
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    // Enforcing email verified as mandated
+    function isSignedIn() { 
+      return request.auth != null && request.auth.token.email_verified == true; 
+    }
+    // Admin checking against the users collection
+    function isAdmin() { 
+      return isSignedIn() && 
+             (request.auth.token.email == 'mubirushafik1088@gmail.com' || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')); 
+    }
+    
+    // Validation Blueprints
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'role', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().size() >= 5
+        && data.email is string && data.email.size() <= 100
+        && data.role is string && (data.role == 'client' || data.role == 'admin' || data.role == 'stylist')
+        && data.displayName is string && data.displayName.size() <= 100
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 20))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAppointment(data) {
+      return data.keys().hasAll(['clientId', 'stylistId', 'serviceName', 'date', 'status', 'price', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 8
+        && data.clientId is string && data.clientId.size() <= 128
+        && data.stylistId is string && data.stylistId.size() <= 128
+        && data.serviceName is string && data.serviceName.size() <= 100
+        && data.date is string && data.date.size() <= 30
+        && data.status is string && (data.status == 'pending' || data.status == 'confirmed' || data.status == 'completed' || data.status == 'cancelled')
+        && data.price is number
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['name', 'category', 'price', 'stock', 'sku', 'createdAt', 'updatedAt'])
+        && data.keys().size() >= 7
+        && data.name is string && data.name.size() <= 100
+        && data.category is string && (data.category == 'retail' || data.category == 'backbar')
+        && data.price is number
+        && data.stock is number
+        && data.sku is string && data.sku.size() <= 50
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 1048576))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['clientId', 'items', 'total', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().size() >= 6
+        && data.clientId is string && data.clientId.size() <= 128
+        && data.items is list && data.items.size() <= 20 && (data.items.size() == 0 || data.items[0] is map)
+        && data.total is number
+        && data.status is string && (data.status == 'pending' || data.status == 'delivered' || data.status == 'paid' || data.status == 'processing')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidService(data) {
+      return data.keys().hasAll(['name', 'category', 'price', 'durationMinutes', 'createdAt', 'updatedAt'])
+        && data.keys().size() >= 6
+        && data.name is string
+        && data.category is string
+        && data.price is number
+        && data.durationMinutes is number
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidWaitlist(data) {
+      return data.keys().hasAll(['clientId', 'clientName', 'requestedDate', 'notes', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().size() >= 7
+        && data.clientId is string
+        && data.clientName is string
+        && data.requestedDate is string
+        && data.notes is string
+        && data.status is string && (data.status == 'waiting' || data.status == 'fulfilled' || data.status == 'cancelled')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // COLLECTIONS
+
+    // Users (PII Isolation rule: only owner or admin can read/write)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isSignedIn() && isAdmin(); // Only admins can list users
+      allow create: if isValidId(userId) 
+        && isSignedIn() 
+        && request.auth.uid == userId 
+        && isValidUser(incoming()) 
+        && incoming().createdAt == request.time
+        // Prevent self-assigning admin
+        && (incoming().role == 'client' || isAdmin()); 
+      allow update: if isValidId(userId) 
+        && isSignedIn() 
+        && (request.auth.uid == userId || isAdmin()) 
+        && isValidUser(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().createdAt == existing().createdAt
+        // Users can't escalate role unless admin
+        && (incoming().role == existing().role || isAdmin());
+    }
+
+    // Appointments
+    match /appointments/{appointmentId} {
+      allow get: if isValidId(appointmentId) && isSignedIn() && (existing().clientId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      allow create: if isValidId(appointmentId)
+        && isSignedIn()
+        && isValidAppointment(incoming())
+        && incoming().createdAt == request.time
+        && (incoming().clientId == request.auth.uid || isAdmin());
+      allow update: if isValidId(appointmentId)
+        && isSignedIn()
+        && isValidAppointment(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().createdAt == existing().createdAt
+        && incoming().clientId == existing().clientId
+        && (
+          isAdmin() ||
+          // Client can cancel their own appointment if it's pending
+          (existing().clientId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) && existing().status == 'pending' && incoming().status == 'cancelled')
+        );
+      allow delete: if isValidId(appointmentId) && isAdmin();
+    }
+
+    // Products (Inventory)
+    match /products/{productId} {
+      allow get: if isValidId(productId);
+      allow list: if true; // Public catalog
+      allow create: if isValidId(productId) 
+        && isAdmin() 
+        && isValidProduct(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(productId) 
+        && isAdmin() 
+        && isValidProduct(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(productId) && isAdmin();
+    }
+
+    // Orders
+    match /orders/{orderId} {
+      allow get: if isValidId(orderId) && isSignedIn() && (existing().clientId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      allow create: if isValidId(orderId)
+        && isSignedIn()
+        && isValidOrder(incoming())
+        && incoming().createdAt == request.time
+        && (incoming().clientId == request.auth.uid || isAdmin());
+      allow update: if isValidId(orderId)
+        && isSignedIn()
+        && isValidOrder(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().createdAt == existing().createdAt
+        && incoming().clientId == existing().clientId
+        && (
+          isAdmin() ||
+          (existing().clientId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasAny(['status', 'updatedAt', 'orderTrackingId']))
+        );
+    }
+
+    // System config & connection test
+    match /system/{docId} {
+      allow get: if isValidId(docId);
+      allow list: if isValidId(docId);
+      // Only admins can update the features config, but allow all users to read
+      allow get, list: if docId == 'features';
+      allow read: if docId == 'features';
+      allow write: if docId == 'features' && isAdmin();
+    }
+
+    // Content management (Homepage, etc)
+    match /content/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Gallery (Lookbook)
+    match /gallery/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Services (Dynamic Menu)
+    match /services/{serviceId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidService(incoming()) && incoming().createdAt == request.time;
+      allow update: if isAdmin() && isValidService(incoming()) && incoming().updatedAt == request.time && incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin();
+    }
+
+    // Waitlist
+    match /waitlist/{waitlistId} {
+      allow read: if isSignedIn() && (existing().clientId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidWaitlist(incoming()) && incoming().createdAt == request.time && (incoming().clientId == request.auth.uid || isAdmin());
+      allow update: if isSignedIn() && isValidWaitlist(incoming()) && incoming().updatedAt == request.time && incoming().createdAt == existing().createdAt && (isAdmin() || (existing().clientId == request.auth.uid && incoming().clientId == request.auth.uid));
+      allow delete: if isAdmin();
+    }
+
+    // Staff Roster & Shifts
+    match /staff/{staffId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Reminders & Notifications Log
+    match /reminders/{reminderId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
