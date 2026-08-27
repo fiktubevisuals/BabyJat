@@ -195,7 +195,7 @@ export default function ServicesManager() {
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+    const files: File[] = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
     // Filter large files
