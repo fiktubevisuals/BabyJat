@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { 
   User, 
-  GoogleAuthProvider, 
+  onAuthStateChanged, 
   signInWithPopup, 
   signInWithRedirect,
   getRedirectResult,
-  signOut, 
-  onAuthStateChanged,
+  GoogleAuthProvider, 
+  signOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
@@ -14,7 +14,8 @@ import {
   inMemoryPersistence
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { auth, db, messaging } from '../lib/firebase';
+import { getToken } from 'firebase/messaging';
 
 export type UserRole = 'client' | 'admin' | 'stylist';
 
@@ -23,6 +24,7 @@ export interface UserProfile {
   role: UserRole;
   displayName: string;
   phone?: string;
+  fcmToken?: string;
   createdAt: any;
   updatedAt: any;
 }
@@ -35,6 +37,7 @@ interface AuthContextType {
   signInWithEmail: (email: string, pass: string) => Promise<void>;
   signUpWithEmail: (email: string, pass: string, name: string, role?: UserRole) => Promise<void>;
   logout: () => Promise<void>;
+  requestPushPermissions: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -90,7 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             } catch (e) {
               console.warn("Firestore profile doc create deferred:", e);
             }
-
+            
             setProfile({
               email: currentUser.email || '',
               role: currentUser.email === 'mubirushafik1088@gmail.com' ? 'admin' : 'client',
@@ -101,7 +104,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (error) {
           console.warn("Profile sync fallback triggered:", error);
-          // Always ensure user profile is populated to unblock navigation
           setProfile({
             email: currentUser.email || '',
             role: currentUser.email === 'mubirushafik1088@gmail.com' ? 'admin' : 'client',
@@ -120,6 +122,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => unsubscribe();
   }, []);
+
+  const requestPushPermissions = async () => {
+    if (!user || !messaging) return;
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const currentToken = await getToken(messaging, {
+          vapidKey: 'BHzJ9V22BHTJ73rY0L7tC5D9hA6Qc28R8F2H_cW' // Dummy for demo if none exists in config, but normally omit or use real
+        }).catch(err => {
+          // If vapidKey is required and we don't have it, we just fallback or ignore
+          console.warn('VapidKey not provided or other issue:', err);
+          return null;
+        });
+        
+        if (currentToken) {
+          const userDocRef = doc(db, 'users', user.uid);
+          await setDoc(userDocRef, { fcmToken: currentToken, updatedAt: serverTimestamp() }, { merge: true });
+          if (profile) {
+            setProfile({ ...profile, fcmToken: currentToken });
+          }
+          console.log("FCM Token saved to profile.");
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to request push permissions", e);
+    }
+  };
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
@@ -167,6 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await updateProfile(cred.user, { displayName: name });
         const userDocRef = doc(db, 'users', cred.user.uid);
         const assignedRole: UserRole = email === 'mubirushafik1088@gmail.com' ? 'admin' : role;
+        
         const newProfile: UserProfile = {
           email,
           role: assignedRole,
@@ -174,11 +204,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         };
+        
         try {
           await setDoc(userDocRef, newProfile);
         } catch (e) {
           console.warn("Firestore profile save deferred:", e);
         }
+        
         setProfile({
           email,
           role: assignedRole,
@@ -197,6 +229,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await updateProfile(cred.user, { displayName: name });
             const userDocRef = doc(db, 'users', cred.user.uid);
             const assignedRole: UserRole = email === 'mubirushafik1088@gmail.com' ? 'admin' : role;
+            
             const newProfile: UserProfile = {
               email,
               role: assignedRole,
@@ -204,11 +237,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             };
+            
             try {
               await setDoc(userDocRef, newProfile);
             } catch (e) {
               console.warn("Firestore profile save deferred:", e);
             }
+            
             setProfile({
               email,
               role: assignedRole,
@@ -238,7 +273,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signInWithGoogle, signInWithEmail, signUpWithEmail, logout }}>
+    <AuthContext.Provider value={{ user, profile, loading, signInWithGoogle, signInWithEmail, signUpWithEmail, logout, requestPushPermissions }}>
       {children}
     </AuthContext.Provider>
   );

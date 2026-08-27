@@ -1,3 +1,5 @@
+import twilio from 'twilio';
+
 export interface ReminderPayload {
   appointmentId: string;
   clientName: string;
@@ -81,18 +83,41 @@ export async function dispatchAutomatedReminder(payload: ReminderPayload): Promi
   // Check if Twilio / SMS provider keys exist in environment
   const twilioSid = process.env.TWILIO_ACCOUNT_SID;
   const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+  const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
+  
   let smsStatus: 'sent' | 'simulated' | 'failed' = 'simulated';
   let whatsappStatus: 'sent' | 'simulated' | 'failed' = 'simulated';
 
-  if (twilioSid && twilioAuthToken && (payload.channel === 'sms' || payload.channel === 'both')) {
+  if (twilioSid && twilioAuthToken && twilioPhone) {
     try {
-      // In production, Twilio or SMS Gateway client can be invoked here.
-      console.log(`[SMS Dispatch] Sending real SMS to ${payload.clientPhone}`);
-      smsStatus = 'sent';
-    } catch (e) {
-      console.error('[SMS Dispatch Error]', e);
+      const client = twilio(twilioSid, twilioAuthToken);
+      
+      if (payload.channel === 'sms' || payload.channel === 'both') {
+        console.log(`[SMS Dispatch] Sending real SMS to ${payload.clientPhone}`);
+        await client.messages.create({
+          body: smsText,
+          from: twilioPhone,
+          to: payload.clientPhone
+        });
+        smsStatus = 'sent';
+      }
+      
+      if (payload.channel === 'whatsapp' || payload.channel === 'both') {
+        console.log(`[WhatsApp Dispatch] Sending real WhatsApp to ${payload.clientPhone}`);
+        await client.messages.create({
+          body: waText,
+          from: `whatsapp:${twilioPhone}`,
+          to: `whatsapp:${payload.clientPhone}`
+        });
+        whatsappStatus = 'sent';
+      }
+    } catch (e: any) {
+      console.error('[Twilio Dispatch Error]', e.message);
       smsStatus = 'failed';
+      whatsappStatus = 'failed';
     }
+  } else {
+    console.log(`[Simulated Dispatch] To ${payload.clientPhone} using ${payload.channel}`);
   }
 
   return {

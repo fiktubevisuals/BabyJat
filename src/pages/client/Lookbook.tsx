@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, deleteDoc, serverTimestamp, query, orderBy, limit, startAfter, QueryDocumentSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { GalleryEditorModal } from './GalleryEditorModal';
@@ -16,22 +16,54 @@ export interface GalleryItem {
   createdAt?: any;
 }
 
+const ITEMS_PER_PAGE = 6;
+
 export default function Lookbook() {
   const { profile } = useAuth();
   const [items, setItems] = useState<GalleryItem[]>([]);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  
   const [isEditing, setIsEditing] = useState(false);
   const [editingItem, setEditingItem] = useState<GalleryItem | null>(null);
 
-  useEffect(() => {
-    const q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(q, (snapshot) => {
+  const fetchItems = async (isLoadMore = false) => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      let q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'), limit(ITEMS_PER_PAGE));
+      
+      if (isLoadMore && lastDoc) {
+        q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(ITEMS_PER_PAGE));
+      }
+      
+      const snapshot = await getDocs(q);
       const fetched: GalleryItem[] = [];
       snapshot.forEach(doc => {
         fetched.push({ id: doc.id, ...doc.data() } as GalleryItem);
       });
-      setItems(fetched);
-    }, (err) => console.warn("Lookbook snapshot error:", err));
-    return () => unsub();
+      
+      if (isLoadMore) {
+        setItems(prev => [...prev, ...fetched]);
+      } else {
+        setItems(fetched);
+      }
+      
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+      if (fetched.length < ITEMS_PER_PAGE) {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.warn("Lookbook fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchItems();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const openEditor = (item?: GalleryItem) => {
@@ -52,6 +84,9 @@ export default function Lookbook() {
       await setDoc(docRef, payload);
       setIsEditing(false);
       setEditingItem(null);
+      // Refresh
+      setHasMore(true);
+      fetchItems();
     } catch (error) {
       console.error("Failed to save gallery item", error);
       alert("Failed to save. Make sure you are an Admin.");
@@ -63,6 +98,7 @@ export default function Lookbook() {
     e.stopPropagation();
     if (window.confirm("Are you sure you want to delete this look?")) {
       await deleteDoc(doc(db, 'gallery', id));
+      setItems(items.filter(item => item.id !== id));
     }
   };
 
@@ -100,53 +136,67 @@ export default function Lookbook() {
       </div>
 
       {/* Lookbook Grid */}
-      {items.length === 0 ? (
+      {items.length === 0 && !loading ? (
         <div className="text-center py-20 text-secondary">
           <span className="material-symbols-outlined text-4xl mb-2 opacity-50">imagesmode</span>
           <p>No looks have been added yet.</p>
           {profile?.role === 'admin' && <p className="text-sm mt-2">Click "Add New Look" to start building your gallery.</p>}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-gutter">
-          {items.map(item => {
-            const aspectClass = item.size === 'tall' ? 'aspect-[3/4]' : item.size === 'wide' ? 'aspect-[21/9]' : 'aspect-square';
-            const spanClass = item.size === 'tall' ? 'row-span-2' : item.size === 'wide' ? 'lg:col-span-2' : '';
-            
-            return (
-              <div key={item.id} className={`group relative overflow-hidden rounded-lg bg-surface-container-low cursor-pointer block ${spanClass}`}>
-                <div className={`${aspectClass} w-full overflow-hidden`}>
-                  <img className="w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105" src={item.imageUrl} alt={item.title} />
-                </div>
-                
-                <div className="absolute inset-0 bg-background/10 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-stack-md border-[0.5px] border-on-primary/20">
-                  <div className="bg-surface/90 backdrop-blur-md p-stack-sm rounded-md translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
-                    {item.tag && <span className="inline-block bg-tertiary-fixed text-on-tertiary-fixed font-label-caps text-label-caps px-2 py-1 rounded mb-2 uppercase">{item.tag}</span>}
-                    <h3 className="font-headline-md text-headline-md text-on-surface mb-1">{item.title}</h3>
-                    <p className="font-body-md text-body-md text-secondary mb-4">{item.stylist}</p>
-                    <Link to="/services" className="w-full inline-block text-center bg-primary text-on-primary font-label-caps text-label-caps py-3 px-4 uppercase tracking-widest hover:bg-surface-tint transition-colors">Book This Look</Link>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-gutter">
+            {items.map(item => {
+              const aspectClass = item.size === 'tall' ? 'aspect-[3/4]' : item.size === 'wide' ? 'aspect-[21/9]' : 'aspect-square';
+              const spanClass = item.size === 'tall' ? 'row-span-2' : item.size === 'wide' ? 'lg:col-span-2' : '';
+              
+              return (
+                <div key={item.id} className={`group relative overflow-hidden rounded-lg bg-surface-container-low cursor-pointer block ${spanClass}`}>
+                  <div className={`${aspectClass} w-full overflow-hidden bg-surface-container-low`}>
+                    <img loading="lazy" className="w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105" src={item.imageUrl} alt={item.title} />
                   </div>
-                </div>
+                  
+                  <div className="absolute inset-0 bg-background/10 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-stack-md border-[0.5px] border-on-primary/20">
+                    <div className="bg-surface/90 backdrop-blur-md p-stack-sm rounded-md translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+                      {item.tag && <span className="inline-block bg-tertiary-fixed text-on-tertiary-fixed font-label-caps text-label-caps px-2 py-1 rounded mb-2 uppercase">{item.tag}</span>}
+                      <h3 className="font-headline-md text-headline-md text-on-surface mb-1">{item.title}</h3>
+                      <p className="font-body-md text-body-md text-secondary mb-4">{item.stylist}</p>
+                      <Link to="/services" className="w-full inline-block text-center bg-primary text-on-primary font-label-caps text-label-caps py-3 px-4 uppercase tracking-widest hover:bg-surface-tint transition-colors">Book This Look</Link>
+                    </div>
+                  </div>
 
-                {profile?.role === 'admin' && (
-                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button 
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditor(item); }}
-                      className="w-10 h-10 rounded-full bg-surface shadow flex items-center justify-center text-primary hover:bg-primary hover:text-on-primary transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-sm">edit</span>
-                    </button>
-                    <button 
-                      onClick={(e) => handleDelete(item.id, e)}
-                      className="w-10 h-10 rounded-full bg-surface shadow flex items-center justify-center text-error hover:bg-error hover:text-white transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-sm">delete</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  {profile?.role === 'admin' && (
+                    <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditor(item); }}
+                        className="w-10 h-10 rounded-full bg-surface shadow flex items-center justify-center text-primary hover:bg-primary hover:text-on-primary transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-sm">edit</span>
+                      </button>
+                      <button 
+                        onClick={(e) => handleDelete(item.id, e)}
+                        className="w-10 h-10 rounded-full bg-surface shadow flex items-center justify-center text-error hover:bg-error hover:text-white transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-sm">delete</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          
+          {hasMore && (
+            <div className="text-center mt-12 mb-8">
+              <button 
+                onClick={() => fetchItems(true)}
+                disabled={loading}
+                className="px-8 py-3 rounded-full border border-primary text-primary font-bold hover:bg-primary hover:text-on-primary transition-colors disabled:opacity-50"
+              >
+                {loading ? 'Loading...' : 'Load More Looks'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </main>
   );

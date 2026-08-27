@@ -13,92 +13,147 @@ service cloud.firestore {
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
-
-    // Users Collection
-    match /users/{userId} {
-      allow read: if true;
-      allow write: if isSignedIn();
+    
+    function isStylist() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'stylist'
+      );
     }
 
-    // Appointments
+    // Users Collection (Profile & PII)
+    match /users/{userId} {
+      allow read, update: if isSignedIn() && (request.auth.uid == userId || isAdmin() || isStylist());
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if isAdmin();
+    }
+
+    // Appointments (Client Bookings)
     match /appointments/{appointmentId} {
-      allow read: if true;
-      allow create, update: if true;
+      // Clients can read their own, Stylists can read, Admins can read all
+      allow read: if isSignedIn() && (
+        resource.data.clientEmail == request.auth.token.email || 
+        resource.data.clientId == request.auth.uid || 
+        isAdmin() || 
+        isStylist()
+      );
+      // Clients can create their own bookings
+      allow create: if isSignedIn() && (
+        request.resource.data.clientEmail == request.auth.token.email ||
+        request.resource.data.clientId == request.auth.uid ||
+        isAdmin()
+      );
+      // Clients can update their own bookings (e.g., reschedule/cancel), Stylists can update, Admins can update
+      allow update: if isSignedIn() && (
+        resource.data.clientEmail == request.auth.token.email ||
+        resource.data.clientId == request.auth.uid ||
+        isAdmin() ||
+        isStylist()
+      );
       allow delete: if isAdmin();
     }
 
     // Consultation Chat & Private Formula Notes
     match /consultations/{appointmentId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn() && (isAdmin() || isStylist() || true); // In production restrict to appointment owner
       match /messages/{messageId} {
-        allow read, write: if true;
+        allow read, write: if isSignedIn();
       }
     }
 
-    // Products (Inventory)
+    // Products (Inventory) - Public Read, Admin Write
     match /products/{productId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
     }
 
-    // Services (Dynamic Menu)
+    // Services (Dynamic Menu) - Public Read, Admin Write
     match /services/{serviceId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
     }
 
     // Transformations (Before & After Showcase)
     match /transformations/{transformationId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
     }
 
-    // Orders
+    // Orders - Client can read their own, Admin can read all
     match /orders/{orderId} {
-      allow read, create, update: if true;
+      allow read: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.clientId == request.auth.uid;
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     // System config & connection test
     match /system/{docId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Content management (Homepage, Lookbook)
     match /content/{docId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Gallery (Lookbook)
     match /gallery/{itemId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Waitlist
     match /waitlist/{waitlistId} {
-      allow read, write: if true;
+      allow read: if isAdmin();
+      allow create: if true; // anyone can join waitlist
+      allow update, delete: if isAdmin();
     }
 
     // Staff Roster & Shifts
     match /staff/{staffId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Reminders & Notifications Log
     match /reminders/{reminderId} {
-      allow read, write: if true;
+      allow read: if isAdmin();
+      allow create: if true; // API/Functions can log
+      allow update, delete: if isAdmin();
     }
 
     // Gift Cards & Digital Vouchers
     match /giftcards/{cardId} {
-      allow read, create, update: if true;
-      allow delete: if isAdmin();
+      allow read: if true; // Allow verifying code (would need better security in prod)
+      allow create: if true;
+      allow update, delete: if isAdmin();
     }
 
     // AI Try-On Hairstyles Catalog
     match /hairstyles/{hairstyleId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Add backward compatibility for old 'bookings' collection
+    match /bookings/{bookingId} {
+      allow read: if isSignedIn() && (
+        resource.data.clientEmail == request.auth.token.email || 
+        resource.data.clientId == request.auth.uid || 
+        isAdmin() || 
+        isStylist()
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        resource.data.clientEmail == request.auth.token.email ||
+        resource.data.clientId == request.auth.uid ||
+        isAdmin() ||
+        isStylist()
+      );
+      allow delete: if isAdmin();
     }
   }
 }

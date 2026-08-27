@@ -7,6 +7,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { ClientLayout } from './layouts/ClientLayout';
 import { AdminLayout } from './layouts/AdminLayout';
+import { StylistLayout } from './layouts/StylistLayout';
 
 import Home from './pages/client/Home';
 import Services from './pages/client/Services';
@@ -30,6 +31,8 @@ import POS from './pages/admin/POS';
 import ServicesManager from './pages/admin/ServicesManager';
 import StaffManager from './pages/admin/StaffManager';
 import ContentManager from './pages/admin/ContentManager';
+
+import StylistDashboard from './pages/stylist/Dashboard';
 
 export default function App() {
   return (
@@ -64,6 +67,10 @@ export default function App() {
             <Route path="/admin/customers" element={<ProtectedRoute requireAdmin><AdminLayout><AdminCustomers /></AdminLayout></ProtectedRoute>} />
             <Route path="/admin/features" element={<ProtectedRoute requireAdmin><AdminLayout><PlatformFeatures /></AdminLayout></ProtectedRoute>} />
             <Route path="/admin/reports" element={<ProtectedRoute requireAdmin><AdminLayout><AdminReports /></AdminLayout></ProtectedRoute>} />
+            
+            {/* Stylist Routes */}
+            <Route path="/stylist" element={<ProtectedRoute requireRole="stylist"><StylistLayout><StylistDashboard /></StylistLayout></ProtectedRoute>} />
+            <Route path="/stylist/*" element={<ProtectedRoute requireRole="stylist"><StylistLayout><StylistDashboard /></StylistLayout></ProtectedRoute>} />
               </Routes>
             </BrowserRouter>
           </ToastProvider>

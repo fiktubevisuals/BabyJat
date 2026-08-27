@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, startAfter, QueryDocumentSnapshot, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Link } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
@@ -14,29 +14,64 @@ interface Product {
   imageUrl?: string;
 }
 
+const ITEMS_PER_PAGE = 8;
+
 export default function Shop() {
   const { addToCart } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [filter, setFilter] = useState('All');
 
-  useEffect(() => {
-    const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const prods: Product[] = [];
+  const fetchProducts = async (isLoadMore = false) => {
+    if (loading) return;
+    setLoading(true);
+    
+    try {
+      let q = query(
+        collection(db, 'products'),
+        where('category', '==', 'retail'),
+        orderBy('createdAt', 'desc'),
+        limit(ITEMS_PER_PAGE)
+      );
+      
+      if (isLoadMore && lastDoc) {
+        q = query(
+          collection(db, 'products'),
+          where('category', '==', 'retail'),
+          orderBy('createdAt', 'desc'),
+          startAfter(lastDoc),
+          limit(ITEMS_PER_PAGE)
+        );
+      }
+      
+      const snapshot = await getDocs(q);
+      const fetched: Product[] = [];
       snapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.category === 'retail') { // Only show retail in shop
-          prods.push({ id: doc.id, ...data } as Product);
-        }
+        fetched.push({ id: doc.id, ...doc.data() } as Product);
       });
-      setProducts(prods);
+      
+      if (isLoadMore) {
+        setProducts(prev => [...prev, ...fetched]);
+      } else {
+        setProducts(fetched);
+      }
+      
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+      if (fetched.length < ITEMS_PER_PAGE) {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.warn("Shop fetch error:", err);
+    } finally {
       setLoading(false);
-    }, (err) => {
-      console.warn("Shop snapshot error:", err);
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAddToCart = (id: string, name: string, price: number, image: string) => {
@@ -74,47 +109,59 @@ export default function Shop() {
       </section>
 
       {/* Product Grid */}
-      {loading ? (
-        <div className="py-20 text-center text-secondary font-label-caps">Loading products...</div>
-      ) : products.length === 0 ? (
+      {products.length === 0 && !loading ? (
         <div className="py-20 text-center text-secondary font-label-caps">No products available at the moment.</div>
       ) : (
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-gutter mb-stack-lg">
-          {displayedProducts.map(product => (
-            <article key={product.id} className="group flex flex-col gap-3">
-              <div className="relative bg-surface-container-low aspect-[4/5] overflow-hidden rounded-sm ambient-glow transition-shadow duration-300">
-                {product.imageUrl ? (
-                  <img className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" src={product.imageUrl} alt={product.name} />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-surface-variant">
-                    <span className="material-symbols-outlined text-4xl text-secondary/50">local_mall</span>
-                  </div>
-                )}
-                
-                <div className="absolute inset-x-0 bottom-0 p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out bg-gradient-to-t from-surface/80 to-transparent backdrop-blur-[2px]">
-                  {product.stock > 0 ? (
-                    <button onClick={(e) => { e.preventDefault(); handleAddToCart(product.id, product.name, product.price, product.imageUrl || ''); }} className="w-full bg-primary text-on-primary py-3 font-label-caps text-label-caps hover:bg-primary-container transition-colors shadow-lg flex justify-center items-center gap-2">
-                      <span className="material-symbols-outlined text-[18px]">add_shopping_cart</span>
-                      Quick Add
-                    </button>
+        <>
+          <section className="grid grid-cols-2 md:grid-cols-4 gap-gutter mb-stack-lg">
+            {displayedProducts.map(product => (
+              <article key={product.id} className="group flex flex-col gap-3">
+                <div className="relative bg-surface-container-low aspect-[4/5] overflow-hidden rounded-sm ambient-glow transition-shadow duration-300">
+                  {product.imageUrl ? (
+                    <img loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" src={product.imageUrl} alt={product.name} />
                   ) : (
-                    <div className="w-full bg-surface-variant text-secondary py-3 font-label-caps text-label-caps text-center cursor-not-allowed">
-                      Out of Stock
+                    <div className="w-full h-full flex items-center justify-center bg-surface-variant">
+                      <span className="material-symbols-outlined text-4xl text-secondary/50">local_mall</span>
                     </div>
                   )}
+                  
+                  <div className="absolute inset-x-0 bottom-0 p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out bg-gradient-to-t from-surface/80 to-transparent backdrop-blur-[2px]">
+                    {product.stock > 0 ? (
+                      <button onClick={(e) => { e.preventDefault(); handleAddToCart(product.id, product.name, product.price, product.imageUrl || ''); }} className="w-full bg-primary text-on-primary py-3 font-label-caps text-label-caps hover:bg-primary-container transition-colors shadow-lg flex justify-center items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">add_shopping_cart</span>
+                        Quick Add
+                      </button>
+                    ) : (
+                      <div className="w-full bg-surface-variant text-secondary py-3 font-label-caps text-label-caps text-center cursor-not-allowed">
+                        Out of Stock
+                      </div>
+                    )}
+                  </div>
+                  
+                  {product.stock < 5 && product.stock > 0 && (
+                    <div className="absolute top-3 left-3 bg-error-container text-error px-2 py-1 font-label-caps text-[10px] tracking-wider rounded-sm">ONLY {product.stock} LEFT</div>
+                  )}
                 </div>
-                
-                {product.stock < 5 && product.stock > 0 && (
-                  <div className="absolute top-3 left-3 bg-error-container text-error px-2 py-1 font-label-caps text-[10px] tracking-wider rounded-sm">ONLY {product.stock} LEFT</div>
-                )}
-              </div>
-              <div className="flex flex-col">
-                <h3 className="font-body-lg text-body-lg font-semibold truncate">{product.name}</h3>
-                <p className="text-secondary mt-1">UGX {product.price.toLocaleString()}</p>
-              </div>
-            </article>
-          ))}
-        </section>
+                <div className="flex flex-col">
+                  <h3 className="font-body-lg text-body-lg font-semibold truncate">{product.name}</h3>
+                  <p className="text-secondary mt-1">UGX {product.price.toLocaleString()}</p>
+                </div>
+              </article>
+            ))}
+          </section>
+          
+          {hasMore && (
+            <div className="text-center mt-12 mb-8">
+              <button 
+                onClick={() => fetchProducts(true)}
+                disabled={loading}
+                className="px-8 py-3 rounded-full border border-primary text-primary font-bold hover:bg-primary hover:text-on-primary transition-colors disabled:opacity-50"
+              >
+                {loading ? 'Loading...' : 'Load More Products'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </main>
   );

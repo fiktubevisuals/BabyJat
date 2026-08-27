@@ -60,6 +60,12 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                 Admin
               </Link>
             )}
+            {profile?.role === 'stylist' && (
+              <Link to="/stylist" className={`transition-colors flex items-center gap-1 ${location.pathname.startsWith('/stylist') ? 'text-primary dark:text-inverse-primary border-b-2 border-primary pb-1' : 'text-secondary dark:text-secondary-fixed-dim hover:text-primary'}`}>
+                <span className="material-symbols-outlined text-[18px]">content_cut</span>
+                Stylist
+              </Link>
+            )}
           </nav>
           <Link to="/cart" aria-label="Shopping Bag" className="relative text-primary dark:text-inverse-primary hover:opacity-80 transition-opacity active:scale-95 transition-transform">
             <span className="material-symbols-outlined">shopping_bag</span>
@@ -150,6 +156,12 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             <Link to="/admin" className={`flex flex-col items-center justify-center active:scale-90 transition-all duration-200 ${location.pathname.startsWith('/admin') ? 'text-primary dark:text-inverse-primary bg-primary-fixed/20 rounded-full px-4 py-1' : 'text-secondary dark:text-secondary-fixed-dim hover:text-primary dark:hover:text-primary-fixed-dim'}`}>
               <span className={`material-symbols-outlined ${location.pathname.startsWith('/admin') ? 'fill-1' : ''}`}>admin_panel_settings</span>
               <span className="font-label-caps text-label-caps mt-1">Admin</span>
+            </Link>
+          )}
+          {profile?.role === 'stylist' && (
+            <Link to="/stylist" className={`flex flex-col items-center justify-center active:scale-90 transition-all duration-200 ${location.pathname.startsWith('/stylist') ? 'text-primary dark:text-inverse-primary bg-primary-fixed/20 rounded-full px-4 py-1' : 'text-secondary dark:text-secondary-fixed-dim hover:text-primary dark:hover:text-primary-fixed-dim'}`}>
+              <span className={`material-symbols-outlined ${location.pathname.startsWith('/stylist') ? 'fill-1' : ''}`}>content_cut</span>
+              <span className="font-label-caps text-label-caps mt-1">Stylist</span>
             </Link>
           )}
         </div>

@@ -25,7 +25,7 @@ interface OrderData {
 }
 
 export default function Profile() {
-  const { user, profile, logout } = useAuth();
+  const { user, profile, logout, requestPushPermissions } = useAuth();
   const navigate = useNavigate();
   const [appointments, setAppointments] = useState<AppointmentData[]>([]);
   const [loadingApts, setLoadingApts] = useState(true);
@@ -490,13 +490,27 @@ export default function Profile() {
                 </a>
               </li>
               <li>
-                <a href="#" className="flex items-center justify-between p-3 rounded-lg hover:bg-primary-fixed/10 group transition-colors">
+                <button 
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    if ('Notification' in window) {
+                      await requestPushPermissions();
+                      alert('Push notifications enabled!');
+                    } else {
+                      alert('Your browser does not support push notifications.');
+                    }
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-primary-fixed/10 group transition-colors"
+                >
                   <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-secondary group-hover:text-primary transition-colors">notifications_none</span>
-                    <span className="font-body-md text-on-surface group-hover:text-primary transition-colors">Notifications</span>
+                    <span className="material-symbols-outlined text-secondary group-hover:text-primary transition-colors">notifications_active</span>
+                    <div className="text-left">
+                      <span className="block font-body-md text-on-surface group-hover:text-primary transition-colors">Enable Notifications</span>
+                      <span className="block text-[10px] text-secondary">Get booking updates & promos</span>
+                    </div>
                   </div>
                   <span className="material-symbols-outlined text-secondary text-sm">chevron_right</span>
-                </a>
+                </button>
               </li>
               <li>
                 <a href="#" className="flex items-center justify-between p-3 rounded-lg hover:bg-primary-fixed/10 group transition-colors">

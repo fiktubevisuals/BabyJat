@@ -5,9 +5,10 @@ import { useAuth } from '../contexts/AuthContext';
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAdmin?: boolean;
+  requireRole?: 'admin' | 'stylist' | 'client';
 }
 
-export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, requireAdmin = false, requireRole }: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth();
   const location = useLocation();
 
@@ -24,6 +25,10 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
   }
 
   if (requireAdmin && profile?.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+
+  if (requireRole && profile?.role !== requireRole && profile?.role !== 'admin') {
     return <Navigate to="/" replace />;
   }
 
