@@ -45,6 +45,9 @@ export function FeatureProvider({ children }: { children: React.ReactNode }) {
         setFeatures(defaultFeatures);
       }
       setLoading(false);
+    }, (err) => {
+      console.warn("Features snapshot ended:", err);
+      setLoading(false);
     });
 
     return () => unsubscribe();

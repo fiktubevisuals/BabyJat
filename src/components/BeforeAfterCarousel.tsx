@@ -1,23 +1,34 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-const transformations = [
+export interface TransformationItem {
+  id: string;
+  client: string;
+  service: string;
+  before: string;
+  after: string;
+  createdAt?: any;
+}
+
+const defaultTransformations: TransformationItem[] = [
   {
-    id: 1,
+    id: '1',
     client: "Sarah M.",
     service: "Full Balayage & Styling",
     before: "https://images.unsplash.com/photo-1512413346517-573523f2b489?w=800&q=80",
     after: "https://images.unsplash.com/photo-1595476108010-b4d1f10d5e43?w=800&q=80",
   },
   {
-    id: 2,
+    id: '2',
     client: "Elena R.",
     service: "Luxury Blowout",
     before: "https://images.unsplash.com/photo-1580618672591-eb180b1a973f?w=800&q=80",
     after: "https://images.unsplash.com/photo-1519699047748-de8e457a634e?w=800&q=80",
   },
   {
-    id: 3,
+    id: '3',
     client: "Jessica T.",
     service: "Signature Precision Cut",
     before: "https://images.unsplash.com/photo-1620331311520-246422fd82f9?w=800&q=80",
@@ -26,7 +37,24 @@ const transformations = [
 ];
 
 export function BeforeAfterCarousel() {
+  const [transformations, setTransformations] = useState<TransformationItem[]>(defaultTransformations);
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    const q = query(collection(db, 'transformations'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TransformationItem));
+        setTransformations(fetched);
+      } else {
+        setTransformations(defaultTransformations);
+      }
+    }, (err) => {
+      console.warn("Transformations snapshot error:", err);
+    });
+
+    return () => unsub();
+  }, []);
 
   const nextSlide = () => {
     setCurrentIndex((prev) => (prev + 1) % transformations.length);

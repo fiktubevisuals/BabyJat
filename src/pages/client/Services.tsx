@@ -1,15 +1,43 @@
+import { useState, useEffect } from 'react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
 import { BookingModal } from '../../components/modals/BookingModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { BeforeAfterCarousel } from '../../components/BeforeAfterCarousel';
+import { SEOHead } from '../../components/SEOHead';
+
+interface Service {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  durationMinutes: number;
+  description?: string;
+  imageUrl?: string;
+  imageUrls?: string[];
+}
 
 export default function Services() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<{name: string, price: number} | null>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = onSnapshot(query(collection(db, 'services'), orderBy('category'), orderBy('name')), (snap) => {
+      setServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Service)));
+      setLoading(false);
+    }, (err) => {
+      console.warn("Services snapshot ended:", err);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
 
   const handleBookClick = (name: string, price: number) => {
     if (!user) {
@@ -20,11 +48,45 @@ export default function Services() {
     setModalOpen(true);
   };
 
+  // Group services by category
+  const groupedServices = services.reduce((acc, service) => {
+    if (!acc[service.category]) {
+      acc[service.category] = [];
+    }
+    acc[service.category].push(service);
+    return acc;
+  }, {} as Record<string, Service[]>);
+
   return (
-    <main className="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-stack-md md:py-stack-lg">
+    <main className="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop pb-stack-md md:pb-stack-lg">
+      <SEOHead pageKey="services" />
       <div className="mb-stack-lg text-center">
         <h1 className="font-display-lg text-display-lg text-on-background mb-stack-sm">Our Services</h1>
         <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mx-auto">Experience high-end salon treatments tailored to your unique style. We specialize in precision, color, and absolute luxury.</p>
+      </div>
+
+      {/* AI Try-On Interactive Banner */}
+      <div className="mb-stack-lg bg-gradient-to-r from-primary/10 via-surface-container-high to-primary/5 p-6 md:p-8 rounded-3xl border border-primary/20 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
+        <div className="space-y-2 text-center md:text-left">
+          <span className="px-3 py-1 bg-primary text-on-primary text-[10px] font-bold font-label-caps rounded-full uppercase tracking-wider">
+            New AI Studio Feature
+          </span>
+          <h2 className="font-headline-md text-2xl md:text-3xl text-on-surface">Not Sure Which Color Suits You?</h2>
+          <p className="text-secondary text-xs md:text-sm max-w-xl">
+            Upload a selfie or test our base hair models with our <strong>AI Hairstyle & Hair Color Try-On Studio</strong>. Preview 7 signature shade formulations with real-time intensity and shine adjustments before booking!
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            const btn = document.querySelector('header button span[aria-hidden="true"]') || document.querySelector('button:has(span:contains("AI Try-On"))');
+            // Dispatch custom event or click layout button
+            window.dispatchEvent(new CustomEvent('open-ai-try-on'));
+          }}
+          className="shrink-0 px-6 py-3.5 bg-primary text-on-primary font-label-caps text-xs rounded-full shadow-lg hover:opacity-90 transition-all flex items-center gap-2 active:scale-95"
+        >
+          <span className="material-symbols-outlined text-base">auto_fix_high</span>
+          LAUNCH AI TRY-ON
+        </button>
       </div>
 
       <section className="mb-stack-lg md:mb-stack-xl">
@@ -35,77 +97,64 @@ export default function Services() {
         <BeforeAfterCarousel />
       </section>
 
-      {/* Service Category: Haircuts */}
-      <section className="mb-stack-lg">
-        <div className="relative h-48 md:h-64 w-full mb-stack-md overflow-hidden rounded-xl bg-surface-variant">
-          <img className="object-cover w-full h-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCBnHJWb4JTI5eDA6geasjxTu_LUIQvZYq3QMW0ihyTvoNYiHjnyCVULkXCg2kExTvAwMunVsgNI3QcAMh4Uc4cnqrIZRkLc6HNDBttgIRS8fF6768tlRLa0OK-1-c1EPXV3fN7oXYp4NoBbZaTQH4LIF1S_TWwXFBcNWhPpoE61Z8EdAwlQMg1ylQlyCoLFJvnHmH88fEMScsE4A2yiWEKgdPAeayyAxvletEJX3mTZaUtNnxT4kfGjg" alt="Haircuts & Styling" />
-          <div className="absolute inset-0 bg-black/20 flex items-end p-6">
-            <h2 className="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-white">Haircuts & Styling</h2>
-          </div>
-        </div>
-        <div className="flex flex-col">
-          {/* Service Item */}
-          <div className="flex items-center justify-between py-4 border-b-[0.5px] border-on-background/20 group hover:bg-surface-container-low transition-colors px-2">
-            <div className="flex flex-col max-w-[60%]">
-              <h3 className="font-headline-md text-headline-md text-on-background">Signature Precision Cut</h3>
-              <p className="font-body-md text-body-md text-on-surface-variant mt-1">Includes consultation, wash, customized cut, and blowout.</p>
-              <span className="font-label-caps text-label-caps text-secondary mt-2 flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">schedule</span> 60 mins</span>
+      {loading ? (
+        <div className="py-20 text-center text-secondary font-label-caps">Loading services...</div>
+      ) : Object.keys(groupedServices).length === 0 ? (
+        <div className="py-20 text-center text-secondary font-label-caps">No services available at the moment.</div>
+      ) : (
+        (Object.entries(groupedServices) as [string, Service[]][]).map(([category, categoryServices]) => (
+          <section key={category} className="mb-stack-lg">
+            <div className="mb-stack-md py-4 border-b-2 border-on-background/10">
+              <h2 className="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-background">{category}</h2>
             </div>
-            <div className="flex items-center gap-4">
-              <span className="font-body-lg text-body-lg text-on-background">UGX 120</span>
-              <button onClick={() => handleBookClick('Signature Precision Cut', 120)} className="bg-primary text-on-primary px-6 py-2 rounded-full font-label-caps text-label-caps hover:bg-surface-tint transition-colors active:scale-95 hidden md:block">Book</button>
-            </div>
-          </div>
-          {/* Service Item */}
-          <div className="flex items-center justify-between py-4 border-b-[0.5px] border-on-background/20 group hover:bg-surface-container-low transition-colors px-2">
-            <div className="flex flex-col max-w-[60%]">
-              <h3 className="font-headline-md text-headline-md text-on-background">Luxury Blowout</h3>
-              <p className="font-body-md text-body-md text-on-surface-variant mt-1">Wash, scalp massage, and lasting voluminous styling.</p>
-              <span className="font-label-caps text-label-caps text-secondary mt-2 flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">schedule</span> 45 mins</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="font-body-lg text-body-lg text-on-background">UGX 65</span>
-              <button onClick={() => handleBookClick('Luxury Blowout', 65)} className="bg-primary text-on-primary px-6 py-2 rounded-full font-label-caps text-label-caps hover:bg-surface-tint transition-colors active:scale-95 hidden md:block">Book</button>
-            </div>
-          </div>
-        </div>
-      </section>
+            
+            <div className="flex flex-col gap-8">
+              {categoryServices.map((service) => {
+                const images = service.imageUrls || (service.imageUrl ? [service.imageUrl] : []);
+                return (
+                  <div key={service.id} className="flex flex-col md:flex-row gap-6 p-4 md:p-6 rounded-2xl bg-surface-container-lowest border border-outline/10 hover:shadow-md transition-shadow">
+                    
+                    {/* Service Info */}
+                    <div className="flex flex-col flex-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-headline-md text-headline-md text-on-background">{service.name}</h3>
+                        <span className="font-body-lg text-body-lg text-on-background font-bold whitespace-nowrap bg-primary/10 px-3 py-1 rounded-full text-primary">UGX {service.price.toLocaleString()}</span>
+                      </div>
+                      
+                      {service.description && (
+                        <p className="font-body-md text-body-md text-on-surface-variant max-w-2xl">{service.description}</p>
+                      )}
+                      
+                      <div className="mt-auto pt-6 flex items-center justify-between">
+                        <span className="font-label-caps text-label-caps text-secondary flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[14px]">schedule</span> {service.durationMinutes} mins
+                        </span>
+                        <button onClick={() => handleBookClick(service.name, service.price)} className="bg-primary text-on-primary px-8 py-2.5 rounded-full font-label-caps text-label-caps hover:bg-surface-tint transition-colors active:scale-95 shadow-sm">
+                          Book Now
+                        </button>
+                      </div>
+                    </div>
 
-      {/* Service Category: Coloring */}
-      <section className="mb-stack-lg">
-        <div className="relative h-48 md:h-64 w-full mb-stack-md overflow-hidden rounded-xl bg-surface-variant">
-          <img className="object-cover w-full h-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDZoyR4s5SFIzROCccyfOeRhcsdwYXiDolHvJXqxS6wRZQmBsdEnm3w0l6o5icQEmoZcGlgGOwulD5GWXXIWiT39dH7QcdXX5p4prUmQF_p63h5BgJkTWhETRgpabMEOy2y0RNQ6UVxjxHcouaZDlDOXfyVjICBKuSQN0qW2HMvFu6152Su66FGXq9Sfrb3S0zPWf0wWPTZrxy35szuTk3EgUVKHeihlxmhWu-CxGnaQmzl6d3IuOUBOQ" alt="Color & Highlights" />
-          <div className="absolute inset-0 bg-black/20 flex items-end p-6">
-            <h2 className="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-white">Color & Highlights</h2>
-          </div>
-        </div>
-        <div className="flex flex-col">
-          {/* Service Item */}
-          <div className="flex items-center justify-between py-4 border-b-[0.5px] border-on-background/20 group hover:bg-surface-container-low transition-colors px-2">
-            <div className="flex flex-col max-w-[60%]">
-              <h3 className="font-headline-md text-headline-md text-on-background">Full Balayage</h3>
-              <p className="font-body-md text-body-md text-on-surface-variant mt-1">Hand-painted, natural-looking sunkissed highlights.</p>
-              <span className="font-label-caps text-label-caps text-secondary mt-2 flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">schedule</span> 180 mins</span>
+                    {/* Service Images Gallery */}
+                    {images.length > 0 && (
+                      <div className="w-full md:w-1/3 xl:w-2/5 shrink-0">
+                        <div className="flex overflow-x-auto gap-3 pb-2 snap-x snap-mandatory hide-scrollbar">
+                          {images.map((img, idx) => (
+                            <div key={idx} className="relative w-40 sm:w-48 shrink-0 aspect-[4/5] rounded-xl overflow-hidden snap-center border border-outline/10 bg-black/5 dark:bg-black/20">
+                              <img src={img} alt={`${service.name} preview ${idx + 1}`} className="w-full h-full object-cover" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex items-center gap-4">
-              <span className="font-body-lg text-body-lg text-on-background">UGX 250</span>
-              <button onClick={() => handleBookClick('Full Balayage', 250)} className="bg-primary text-on-primary px-6 py-2 rounded-full font-label-caps text-label-caps hover:bg-surface-tint transition-colors active:scale-95 hidden md:block">Book</button>
-            </div>
-          </div>
-          {/* Service Item */}
-          <div className="flex items-center justify-between py-4 border-b-[0.5px] border-on-background/20 group hover:bg-surface-container-low transition-colors px-2">
-            <div className="flex flex-col max-w-[60%]">
-              <h3 className="font-headline-md text-headline-md text-on-background">Single Process Color</h3>
-              <p className="font-body-md text-body-md text-on-surface-variant mt-1">All-over color application for rich, consistent tone.</p>
-              <span className="font-label-caps text-label-caps text-secondary mt-2 flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">schedule</span> 90 mins</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="font-body-lg text-body-lg text-on-background">UGX 140</span>
-              <button onClick={() => handleBookClick('Single Process Color', 140)} className="bg-primary text-on-primary px-6 py-2 rounded-full font-label-caps text-label-caps hover:bg-surface-tint transition-colors active:scale-95 hidden md:block">Book</button>
-            </div>
-          </div>
-        </div>
-      </section>
+          </section>
+        ))
+      )}
 
       {selectedService && (
         <BookingModal 

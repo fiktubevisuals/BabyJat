@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, setDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, getDocs, query, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { DragDropShiftBoard } from '../../components/admin/DragDropShiftBoard';
 
 interface StaffProfile {
   id: string;
@@ -14,10 +15,13 @@ interface StaffProfile {
   shiftStart: string;           // '09:00'
   shiftEnd: string;             // '18:00'
   assignedServices: string[];   // service IDs or names
+  activeShift?: boolean;
+  payoutStatus?: 'pending' | 'paid';
+  shiftsByDay?: Record<string, { start: string; end: string; type: 'full' | 'morning' | 'evening' | 'custom' | 'off'; note?: string }>;
 }
 
 export default function StaffManager() {
-  const [activeTab, setActiveTab] = useState<'roster' | 'commissions'>('roster');
+  const [activeTab, setActiveTab] = useState<'planner' | 'roster' | 'commissions'>('planner');
   const [staffList, setStaffList] = useState<StaffProfile[]>([]);
   const [servicesList, setServicesList] = useState<any[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -26,6 +30,7 @@ export default function StaffManager() {
 
   const [selectedStaff, setSelectedStaff] = useState<StaffProfile | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [analyticsModalStaff, setAnalyticsModalStaff] = useState<StaffProfile | null>(null);
   const [dateRange, setDateRange] = useState<'this_month' | 'last_30' | 'all'>('this_month');
 
   useEffect(() => {
@@ -53,7 +58,10 @@ export default function StaffManager() {
             workingDays: extra.workingDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
             shiftStart: extra.shiftStart || '09:00',
             shiftEnd: extra.shiftEnd || '18:00',
-            assignedServices: extra.assignedServices || []
+            assignedServices: extra.assignedServices || [],
+            activeShift: extra.activeShift !== undefined ? extra.activeShift : true,
+            payoutStatus: extra.payoutStatus || 'pending',
+            shiftsByDay: extra.shiftsByDay || undefined
           });
         }
       });
@@ -72,7 +80,9 @@ export default function StaffManager() {
             workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
             shiftStart: '09:00',
             shiftEnd: '17:00',
-            assignedServices: ['Glossy Blowout', 'Honey Balayage']
+            assignedServices: ['Glossy Blowout', 'Honey Balayage'],
+            activeShift: true,
+            payoutStatus: 'pending'
           },
           {
             id: 'sample-marcus',
@@ -85,7 +95,9 @@ export default function StaffManager() {
             workingDays: ['Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
             shiftStart: '10:00',
             shiftEnd: '18:00',
-            assignedServices: ['Honey Balayage', 'Precision Cut']
+            assignedServices: ['Honey Balayage', 'Precision Cut'],
+            activeShift: true,
+            payoutStatus: 'pending'
           },
           {
             id: 'sample-sofia',
@@ -98,26 +110,31 @@ export default function StaffManager() {
             workingDays: ['Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
             shiftStart: '09:00',
             shiftEnd: '18:00',
-            assignedServices: ['Glass Hair Treatment', 'Precision Cut']
+            assignedServices: ['Glass Hair Treatment', 'Precision Cut'],
+            activeShift: true,
+            payoutStatus: 'paid'
           }
         );
       }
 
       setStaffList(compiledStaff);
       setLoading(false);
+    }, (err) => {
+      console.warn("Staff snapshot ended:", err);
+      setLoading(false);
     });
 
     const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
       setServicesList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (err) => console.warn("Services snapshot ended:", err));
 
     const unsubApts = onSnapshot(collection(db, 'appointments'), (snap) => {
       setAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (err) => console.warn("Appointments snapshot ended:", err));
 
     const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => {
       setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (err) => console.warn("Orders snapshot ended:", err));
 
     return () => {
       unsubStaff();
@@ -142,6 +159,8 @@ export default function StaffManager() {
         shiftStart: selectedStaff.shiftStart,
         shiftEnd: selectedStaff.shiftEnd,
         assignedServices: selectedStaff.assignedServices,
+        activeShift: selectedStaff.activeShift ?? true,
+        payoutStatus: selectedStaff.payoutStatus || 'pending',
         updatedAt: serverTimestamp()
       }, { merge: true });
 
@@ -150,6 +169,18 @@ export default function StaffManager() {
     } catch (err) {
       console.error(err);
       alert('Error updating staff configuration');
+    }
+  };
+
+  const togglePayoutStatus = async (staff: StaffProfile) => {
+    const newStatus = staff.payoutStatus === 'paid' ? 'pending' : 'paid';
+    try {
+      await setDoc(doc(db, 'staff', staff.id), {
+        payoutStatus: newStatus,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -171,28 +202,48 @@ export default function StaffManager() {
     setSelectedStaff({ ...selectedStaff, assignedServices: updated });
   };
 
-  // Commission Calculations
+  // Commission & Detailed Analytics Calculations
   const calculateCommission = (staffId: string) => {
     const staff = staffList.find(s => s.id === staffId);
-    if (!staff) return { serviceRev: 0, retailRev: 0, totalCommission: 0, totalCount: 0 };
+    if (!staff) return { serviceRev: 0, retailRev: 0, totalCommission: 0, totalCount: 0, completedCount: 0, completionRate: 0, avgTicket: 0, topServices: [] as { name: string; count: number }[] };
 
-    // Appointments completed for this staff
-    const staffApts = appointments.filter(a => (a.stylistId === staffId || a.stylistId === 'any') && (a.status === 'completed' || a.status === 'confirmed'));
-    const serviceRev = staffApts.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+    // Appointments assigned to staff
+    const staffApts = appointments.filter(a => a.stylistId === staffId || a.stylistId === `stylist_${staffId}` || a.stylistId === 'any');
+    const completedApts = staffApts.filter(a => a.status === 'completed' || a.status === 'confirmed');
+    
+    const serviceRev = completedApts.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
 
-    // Orders processed (POS / direct)
+    // Orders processed
     const staffOrders = orders.filter(o => o.clientId === staffId || o.stylistId === staffId || o.status === 'paid');
-    // Attribute estimated retail revenue split
     const retailRev = staffOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0) * 0.2; // 20% estimated retail attributed
 
     const serviceComm = (serviceRev * (staff.commissionRateService || 15)) / 100;
     const retailComm = (retailRev * (staff.commissionRateRetail || 10)) / 100;
 
+    const completionRate = staffApts.length > 0 ? Math.round((completedApts.length / staffApts.length) * 100) : 100;
+    const avgTicket = completedApts.length > 0 ? Math.round(serviceRev / completedApts.length) : 0;
+
+    // Calculate top services for this staff member
+    const serviceCounts: Record<string, number> = {};
+    completedApts.forEach(a => {
+      const sName = a.serviceName || 'General Styling';
+      serviceCounts[sName] = (serviceCounts[sName] || 0) + 1;
+    });
+
+    const topServices = Object.entries(serviceCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+
     return {
       serviceRev,
       retailRev,
       totalCommission: serviceComm + retailComm,
-      totalCount: staffApts.length
+      totalCount: staffApts.length,
+      completedCount: completedApts.length,
+      completionRate,
+      avgTicket,
+      topServices
     };
   };
 
@@ -204,34 +255,46 @@ export default function StaffManager() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h2 className="font-headline-md text-headline-md text-on-surface">Staff & Scheduling</h2>
-          <p className="font-body-md text-sm text-secondary mt-1">Manage staff shifts, working hours, service assignments & commission payroll</p>
+          <p className="font-body-md text-sm text-secondary mt-1">Manage staff shifts, working hours, service assignments & commission payroll analytics</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-4 mb-6 border-b border-outline/10">
+      <div className="flex gap-2 sm:gap-4 mb-6 border-b border-outline/10 overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('planner')}
+          className={`pb-3 px-3 font-label-caps text-sm border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
+            activeTab === 'planner' ? 'border-primary text-primary font-bold' : 'border-transparent text-secondary hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-sm">drag_indicator</span>
+          Visual Shift Planner (Drag &amp; Drop)
+        </button>
         <button
           onClick={() => setActiveTab('roster')}
-          className={`pb-3 px-3 font-label-caps text-sm border-b-2 transition-colors flex items-center gap-2 ${
+          className={`pb-3 px-3 font-label-caps text-sm border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
             activeTab === 'roster' ? 'border-primary text-primary font-bold' : 'border-transparent text-secondary hover:text-on-surface'
           }`}
         >
           <span className="material-symbols-outlined text-sm">badge</span>
-          Roster & Working Shifts
+          Roster &amp; Profiles
         </button>
         <button
           onClick={() => setActiveTab('commissions')}
-          className={`pb-3 px-3 font-label-caps text-sm border-b-2 transition-colors flex items-center gap-2 ${
+          className={`pb-3 px-3 font-label-caps text-sm border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
             activeTab === 'commissions' ? 'border-primary text-primary font-bold' : 'border-transparent text-secondary hover:text-on-surface'
           }`}
         >
           <span className="material-symbols-outlined text-sm">payments</span>
-          Performance & Commission Tracking
+          Performance &amp; Commissions
         </button>
       </div>
 
       {loading ? (
         <div className="p-12 text-center text-secondary">Loading staff management data...</div>
+      ) : activeTab === 'planner' ? (
+        /* Drag and Drop Visual Shift Planner */
+        <DragDropShiftBoard staffList={staffList} />
       ) : activeTab === 'roster' ? (
         /* Roster & Shifts Grid */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -240,7 +303,7 @@ export default function StaffManager() {
               <div>
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-primary-container text-on-primary-container font-bold flex items-center justify-center text-lg">
+                    <div className="w-12 h-12 rounded-full bg-primary-container text-on-primary-container font-bold flex items-center justify-center text-lg shadow-sm">
                       {staff.name.charAt(0)}
                     </div>
                     <div>
@@ -248,16 +311,34 @@ export default function StaffManager() {
                       <p className="text-xs text-secondary capitalize">{staff.role}</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => openEditModal(staff)}
-                    className="p-2 text-primary hover:bg-surface-variant rounded-full transition-colors"
-                    title="Edit Shifts & Services"
-                  >
-                    <span className="material-symbols-outlined text-sm">edit</span>
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setAnalyticsModalStaff(staff)}
+                      className="p-2 text-secondary hover:text-primary hover:bg-surface-variant rounded-full transition-colors"
+                      title="View Performance Analytics"
+                    >
+                      <span className="material-symbols-outlined text-sm">analytics</span>
+                    </button>
+                    <button
+                      onClick={() => openEditModal(staff)}
+                      className="p-2 text-primary hover:bg-surface-variant rounded-full transition-colors"
+                      title="Edit Shifts & Services"
+                    >
+                      <span className="material-symbols-outlined text-sm">edit</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-3 border-t border-outline/10 pt-4 text-xs text-secondary">
+                  <div className="flex justify-between items-center">
+                    <span className="font-label-caps">Shift Status:</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      staff.activeShift !== false ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {staff.activeShift !== false ? 'On Shift Today' : 'Off Duty'}
+                    </span>
+                  </div>
+
                   <div className="flex justify-between">
                     <span className="font-label-caps">Shift Hours:</span>
                     <span className="font-bold text-on-surface">{staff.shiftStart} - {staff.shiftEnd}</span>
@@ -308,12 +389,20 @@ export default function StaffManager() {
                 </div>
               </div>
 
-              <button
-                onClick={() => openEditModal(staff)}
-                className="mt-6 w-full py-2 bg-surface-container hover:bg-surface-container-high text-on-surface font-label-caps text-xs rounded-xl transition-colors border border-outline/10"
-              >
-                Configure Shift & Skills
-              </button>
+              <div className="flex gap-2 mt-6">
+                <button
+                  onClick={() => openEditModal(staff)}
+                  className="flex-1 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface font-label-caps text-xs rounded-xl transition-colors border border-outline/10"
+                >
+                  Configure Shifts
+                </button>
+                <button
+                  onClick={() => setAnalyticsModalStaff(staff)}
+                  className="px-3 py-2 bg-primary/10 text-primary hover:bg-primary/20 font-label-caps text-xs rounded-xl transition-colors flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">monitoring</span> Analytics
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -342,11 +431,13 @@ export default function StaffManager() {
                 <thead>
                   <tr className="bg-surface-container-low border-b border-outline/10 text-xs font-label-caps text-secondary">
                     <th className="p-4 font-normal">Staff Member</th>
-                    <th className="p-4 font-normal text-center">Completed Bookings</th>
+                    <th className="p-4 font-normal text-center">Completed Sessions</th>
                     <th className="p-4 font-normal text-right">Service Revenue</th>
                     <th className="p-4 font-normal text-right">Retail Attributed</th>
                     <th className="p-4 font-normal text-center">Comm. Rates</th>
                     <th className="p-4 font-normal text-right">Payout Earned</th>
+                    <th className="p-4 font-normal text-center">Payout Status</th>
+                    <th className="p-4 font-normal text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="font-body-md text-sm divide-y divide-outline/5">
@@ -367,7 +458,7 @@ export default function StaffManager() {
                         </td>
                         <td className="p-4 text-center">
                           <span className="px-2.5 py-1 bg-surface-variant rounded-full text-xs font-bold">
-                            {stats.totalCount} sessions
+                            {stats.completedCount} / {stats.totalCount} sessions
                           </span>
                         </td>
                         <td className="p-4 text-right font-medium">UGX {stats.serviceRev.toLocaleString()}</td>
@@ -380,6 +471,27 @@ export default function StaffManager() {
                             UGX {Math.round(stats.totalCommission).toLocaleString()}
                           </span>
                         </td>
+                        <td className="p-4 text-center">
+                          <button
+                            onClick={() => togglePayoutStatus(staff)}
+                            className={`px-3 py-1 rounded-full text-xs font-label-caps border transition-colors ${
+                              staff.payoutStatus === 'paid'
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                            }`}
+                          >
+                            {staff.payoutStatus === 'paid' ? 'Paid ✓' : 'Pending Payout'}
+                          </button>
+                        </td>
+                        <td className="p-4 text-right">
+                          <button
+                            onClick={() => setAnalyticsModalStaff(staff)}
+                            className="p-1.5 text-secondary hover:text-primary transition-colors"
+                            title="Detailed Employee Analytics"
+                          >
+                            <span className="material-symbols-outlined text-sm">monitoring</span>
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -390,6 +502,84 @@ export default function StaffManager() {
         </div>
       )}
 
+      {/* Modal for Employee Performance Analytics */}
+      {analyticsModalStaff && (() => {
+        const stats = calculateCommission(analyticsModalStaff.id);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-surface rounded-2xl shadow-xl w-full max-w-xl p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center border-b border-outline/10 pb-4 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-primary-container text-on-primary-container font-bold flex items-center justify-center text-lg">
+                    {analyticsModalStaff.name.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="font-headline-md text-lg">{analyticsModalStaff.name} Performance Analytics</h3>
+                    <p className="text-xs text-secondary">{analyticsModalStaff.role} • {analyticsModalStaff.email}</p>
+                  </div>
+                </div>
+                <button onClick={() => setAnalyticsModalStaff(null)} className="text-secondary hover:text-on-surface">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              {/* KPI Metrics */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+                <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline/10">
+                  <span className="text-[10px] font-label-caps text-secondary block mb-1">Total Revenue Attributed</span>
+                  <span className="font-headline-md text-base text-primary font-bold">UGX {(stats.serviceRev + stats.retailRev).toLocaleString()}</span>
+                </div>
+                <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline/10">
+                  <span className="text-[10px] font-label-caps text-secondary block mb-1">Commission Earned</span>
+                  <span className="font-headline-md text-base text-emerald-700 font-bold">UGX {Math.round(stats.totalCommission).toLocaleString()}</span>
+                </div>
+                <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline/10">
+                  <span className="text-[10px] font-label-caps text-secondary block mb-1">Avg Ticket Size</span>
+                  <span className="font-headline-md text-base text-on-surface font-bold">UGX {stats.avgTicket.toLocaleString()}</span>
+                </div>
+                <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline/10">
+                  <span className="text-[10px] font-label-caps text-secondary block mb-1">Completed Sessions</span>
+                  <span className="font-headline-md text-base text-on-surface font-bold">{stats.completedCount}</span>
+                </div>
+                <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline/10">
+                  <span className="text-[10px] font-label-caps text-secondary block mb-1">Completion Rate</span>
+                  <span className="font-headline-md text-base text-on-surface font-bold">{stats.completionRate}%</span>
+                </div>
+                <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline/10">
+                  <span className="text-[10px] font-label-caps text-secondary block mb-1">Performance Rating</span>
+                  <span className="font-headline-md text-base text-amber-600 font-bold flex items-center gap-1">
+                    4.9 <span className="material-symbols-outlined text-xs">star</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Top Performed Services */}
+              <div className="mb-6 space-y-2">
+                <h4 className="font-label-caps text-xs text-secondary">Top Performed Services</h4>
+                {stats.topServices.length === 0 ? (
+                  <p className="text-xs text-secondary italic">No completed service records yet for this period.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {stats.topServices.map((srv, idx) => (
+                      <div key={idx} className="flex justify-between items-center p-2.5 bg-surface-container-lowest rounded-lg border border-outline/10 text-xs">
+                        <span className="font-medium text-on-surface">{srv.name}</span>
+                        <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">{srv.count} sessions</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-outline/10">
+                <button onClick={() => setAnalyticsModalStaff(null)} className="px-5 py-2 bg-primary text-on-primary rounded-xl text-xs font-label-caps">
+                  Close Analytics
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Modal for editing staff shifts & capabilities */}
       {editModalOpen && selectedStaff && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -398,6 +588,23 @@ export default function StaffManager() {
             <p className="text-xs text-secondary mb-6">Set working days, shift hours, commission rates and skills.</p>
 
             <div className="space-y-4">
+              {/* Active Shift Toggle */}
+              <div className="flex items-center justify-between p-3 bg-surface-container-lowest rounded-xl border border-outline/10">
+                <div>
+                  <span className="font-label-caps text-xs text-on-surface block font-bold">Active Shift Availability</span>
+                  <span className="text-[11px] text-secondary">Enable or disable roster availability for booking</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStaff({ ...selectedStaff, activeShift: selectedStaff.activeShift === false ? true : false })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-label-caps border transition-colors ${
+                    selectedStaff.activeShift !== false ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-200 text-gray-700 border-gray-300'
+                  }`}
+                >
+                  {selectedStaff.activeShift !== false ? 'Active On Shift' : 'Off Shift'}
+                </button>
+              </div>
+
               {/* Working Days */}
               <div>
                 <label className="block text-xs font-label-caps text-secondary mb-2">Working Days</label>
@@ -506,3 +713,4 @@ export default function StaffManager() {
     </div>
   );
 }
+

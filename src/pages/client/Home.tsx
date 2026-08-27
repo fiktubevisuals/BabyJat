@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, deleteDoc, serverTimestamp, collection, query, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { HomeEditorModal } from './HomeEditorModal';
+import { SEOHead } from '../../components/SEOHead';
+import { GalleryItem } from './Lookbook';
+import { GalleryEditorModal } from './GalleryEditorModal';
 
 const defaultHomepageData = {
+
   heroMain: {
     title: "The Glossy\nBlowout",
     subtitle: "Signature Style",
@@ -24,15 +28,29 @@ const defaultHomepageData = {
 export default function Home() {
   const { profile } = useAuth();
   const [data, setData] = useState<any>(defaultHomepageData);
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingGallery, setIsEditingGallery] = useState(false);
+  const [editingGalleryItem, setEditingGalleryItem] = useState<GalleryItem | null>(null);
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'content', 'homepage'), (docSnap) => {
+    const unsubHome = onSnapshot(doc(db, 'content', 'homepage'), (docSnap) => {
       if (docSnap.exists()) {
         setData({ ...defaultHomepageData, ...docSnap.data() });
       }
-    });
-    return () => unsub();
+    }, (err) => console.warn("Homepage snapshot error:", err));
+
+    const q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
+    const unsubGallery = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        setGalleryItems(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as GalleryItem)));
+      }
+    }, (err) => console.warn("Gallery snapshot error:", err));
+
+    return () => {
+      unsubHome();
+      unsubGallery();
+    };
   }, []);
 
   const handleSave = async (updatedData: any) => {
@@ -48,8 +66,41 @@ export default function Home() {
     }
   };
 
+  const openGalleryEditor = (item?: GalleryItem) => {
+    setEditingGalleryItem(item || null);
+    setIsEditingGallery(true);
+  };
+
+  const handleSaveGalleryItem = async (data: any) => {
+    try {
+      const id = editingGalleryItem ? editingGalleryItem.id : Math.random().toString(36).substring(2, 15);
+      const docRef = doc(db, 'gallery', id);
+      
+      const payload = {
+        ...data,
+        createdAt: editingGalleryItem?.createdAt || serverTimestamp()
+      };
+      
+      await setDoc(docRef, payload);
+      setIsEditingGallery(false);
+      setEditingGalleryItem(null);
+    } catch (error) {
+      console.error("Failed to save gallery item", error);
+      alert("Failed to save. Make sure you are an Admin.");
+    }
+  };
+
+  const handleDeleteGalleryItem = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (window.confirm("Are you sure you want to delete this look?")) {
+      await deleteDoc(doc(db, 'gallery', id));
+    }
+  };
+
   return (
-    <main className="pt-8 md:pt-16 max-w-container-max mx-auto relative">
+    <main className="max-w-container-max mx-auto relative">
+      <SEOHead pageKey="home" />
       {profile?.role === 'admin' && (
         <button 
           onClick={() => setIsEditing(true)}
@@ -65,6 +116,17 @@ export default function Home() {
           data={data} 
           onSave={handleSave} 
           onClose={() => setIsEditing(false)} 
+        />
+      )}
+
+      {isEditingGallery && (
+        <GalleryEditorModal 
+          data={editingGalleryItem} 
+          onSave={handleSaveGalleryItem} 
+          onClose={() => {
+            setIsEditingGallery(false);
+            setEditingGalleryItem(null);
+          }} 
         />
       )}
 
@@ -121,33 +183,66 @@ export default function Home() {
           <Link to="/lookbook" className="font-label-caps text-label-caps text-secondary hover:text-primary transition-colors flex items-center gap-1">View Gallery <span className="material-symbols-outlined text-sm">arrow_forward</span></Link>
         </div>
         <div className="flex overflow-x-auto hide-scrollbar gap-4 px-margin-mobile md:px-margin-desktop pb-8 pt-4">
-          {/* Look 1 */}
-          <Link to="/lookbook/copper-muse" className="min-w-[240px] md:min-w-[320px] aspect-[3/4] relative rounded-lg overflow-hidden group block">
-            <img className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA7mRsfVDUfYMNPcwdZhc449HQGNT84BBpI909sphCPInvyoTMbN0bDeceCY1LQpvTqFa-WuPVZoqvnJ8tHwqAbcBS_4TN7BRIZYdJ-A-x5kSqJ_MojDMzIaVz_8CwMgIuoXiCVQ_GgYycInG9y_z2Y2Yz-TOqkO6G7bZIQbsjSiAg0Mqz6Vf4QMzFYL8wfFQXdW-EuB-YgnmBU_fXp98lpg2wYceXc6mN6iC9ZpewljG8gO57FJODGFQ" alt="Textured Bob" />
-            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors"></div>
-            <div className="absolute bottom-6 left-6 right-6">
-              <h4 className="font-headline-md text-headline-md text-white">Textured Bob</h4>
-              <p className="font-body-md text-body-md text-white/80">Stylist: Elena</p>
-            </div>
-          </Link>
-          {/* Look 2 */}
-          <Link to="/lookbook/copper-muse" className="min-w-[240px] md:min-w-[320px] aspect-[3/4] relative rounded-lg overflow-hidden group block">
-            <img className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCcUEqO-OSLC0OaLRLICcvOn4TkyMycdM5Hnrj2VbLuVBo6aj6vCRSAg6VfS2L2Li8VZJd-07InPnCuUrANGGX0etiNkIaeR7G48CUPniFOSYDdCGyQ3ilJSJs5vJ3f22vQvtLH4H0XYakSzSX1l3YAlQ65o1syWj5S41CmlxftxY0YWsJeDHlskUQIIBXRElwZZA5xmPoi15XZ9dv-B_T7QaYNChb5mna1MaS4K1RF5i8dfOQKBH3Dng" alt="Golden Balayage" />
-            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors"></div>
-            <div className="absolute bottom-6 left-6 right-6">
-              <h4 className="font-headline-md text-headline-md text-white">Golden Balayage</h4>
-              <p className="font-body-md text-body-md text-white/80">Stylist: Marcus</p>
-            </div>
-          </Link>
-          {/* Look 3 */}
-          <Link to="/lookbook/copper-muse" className="min-w-[240px] md:min-w-[320px] aspect-[3/4] relative rounded-lg overflow-hidden group block">
-            <img className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA8FbK4Dr2Spr_zh5aFtyRh5zX1bSHE58aa4NI4g9yA3kfXvWMdLV_1KaskymMX2fUqqLDj5vugTWmW-hQGWZmnF0rJ9sgx-FWbENkLnkpSsoFndzE_FKIu4YdQ6CtaVSdQYB1D0M8M5jGqFJbqif3ThGKpNqjKy7EplNX8ClR3MFrwQIcjPomQ02cyjlApgKN2Z7KzhBdKH-CM1CKYzCJ0OMau2yJkXMynfZBSaySMdRaEcpH4ROj2LA" alt="Glass Hair" />
-            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors"></div>
-            <div className="absolute bottom-6 left-6 right-6">
-              <h4 className="font-headline-md text-headline-md text-white">Glass Hair</h4>
-              <p className="font-body-md text-body-md text-white/80">Stylist: Sofia</p>
-            </div>
-          </Link>
+          {galleryItems.length > 0 ? (
+            galleryItems.map((t) => (
+              <div key={t.id} className="min-w-[240px] md:min-w-[320px] aspect-[3/4] relative rounded-lg overflow-hidden group block">
+                <Link to="/lookbook">
+                  <img className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" src={t.imageUrl} alt={t.title} />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="absolute bottom-6 left-6 right-6">
+                    <h4 className="font-headline-md text-headline-md text-white">{t.title}</h4>
+                    <p className="font-body-md text-body-md text-white/80">Stylist: {t.stylist}</p>
+                  </div>
+                </Link>
+                {profile?.role === 'admin' && (
+                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <button 
+                      onClick={(e) => { e.preventDefault(); openGalleryEditor(t); }}
+                      className="w-10 h-10 rounded-full bg-surface shadow flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-sm">edit</span>
+                    </button>
+                    <button 
+                      onClick={(e) => handleDeleteGalleryItem(t.id, e)}
+                      className="w-10 h-10 rounded-full bg-surface shadow flex items-center justify-center text-error hover:bg-error hover:text-white transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            <>
+              {/* Look 1 */}
+              <Link to="/lookbook" className="min-w-[240px] md:min-w-[320px] aspect-[3/4] relative rounded-lg overflow-hidden group block">
+                <img className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA7mRsfVDUfYMNPcwdZhc449HQGNT84BBpI909sphCPInvyoTMbN0bDeceCY1LQpvTqFa-WuPVZoqvnJ8tHwqAbcBS_4TN7BRIZYdJ-A-x5kSqJ_MojDMzIaVz_8CwMgIuoXiCVQ_GgYycInG9y_z2Y2Yz-TOqkO6G7bZIQbsjSiAg0Mqz6Vf4QMzFYL8wfFQXdW-EuB-YgnmBU_fXp98lpg2wYceXc6mN6iC9ZpewljG8gO57FJODGFQ" alt="Textured Bob" />
+                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors"></div>
+                <div className="absolute bottom-6 left-6 right-6">
+                  <h4 className="font-headline-md text-headline-md text-white">Textured Bob</h4>
+                  <p className="font-body-md text-body-md text-white/80">Stylist: Elena</p>
+                </div>
+              </Link>
+              {/* Look 2 */}
+              <Link to="/lookbook" className="min-w-[240px] md:min-w-[320px] aspect-[3/4] relative rounded-lg overflow-hidden group block">
+                <img className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCcUEqO-OSLC0OaLRLICcvOn4TkyMycdM5Hnrj2VbLuVBo6aj6vCRSAg6VfS2L2Li8VZJd-07InPnCuUrANGGX0etiNkIaeR7G48CUPniFOSYDdCGyQ3ilJSJs5vJ3f22vQvtLH4H0XYakSzSX1l3YAlQ65o1syWj5S41CmlxftxY0YWsJeDHlskUQIIBXRElwZZA5xmPoi15XZ9dv-B_T7QaYNChb5mna1MaS4K1RF5i8dfOQKBH3Dng" alt="Golden Balayage" />
+                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors"></div>
+                <div className="absolute bottom-6 left-6 right-6">
+                  <h4 className="font-headline-md text-headline-md text-white">Golden Balayage</h4>
+                  <p className="font-body-md text-body-md text-white/80">Stylist: Marcus</p>
+                </div>
+              </Link>
+              {/* Look 3 */}
+              <Link to="/lookbook" className="min-w-[240px] md:min-w-[320px] aspect-[3/4] relative rounded-lg overflow-hidden group block">
+                <img className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA8FbK4Dr2Spr_zh5aFtyRh5zX1bSHE58aa4NI4g9yA3kfXvWMdLV_1KaskymMX2fUqqLDj5vugTWmW-hQGWZmnF0rJ9sgx-FWbENkLnkpSsoFndzE_FKIu4YdQ6CtaVSdQYB1D0M8M5jGqFJbqif3ThGKpNqjKy7EplNX8ClR3MFrwQIcjPomQ02cyjlApgKN2Z7KzhBdKH-CM1CKYzCJ0OMau2yJkXMynfZBSaySMdRaEcpH4ROj2LA" alt="Glass Hair" />
+                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors"></div>
+                <div className="absolute bottom-6 left-6 right-6">
+                  <h4 className="font-headline-md text-headline-md text-white">Glass Hair</h4>
+                  <p className="font-body-md text-body-md text-white/80">Stylist: Sofia</p>
+                </div>
+              </Link>
+            </>
+          )}
         </div>
       </section>
 

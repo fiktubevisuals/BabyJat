@@ -4,10 +4,11 @@ export function PWAInstallBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showBanner, setShowBanner] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isIosPrompt, setIsIosPrompt] = useState(false);
 
   useEffect(() => {
-    // Service Worker registration
-    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+    // Service Worker registration (enabled for all environments to ensure offline support in PWA)
+    if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').then(
           (registration) => {
@@ -20,7 +21,19 @@ export function PWAInstallBanner() {
       });
     }
 
-    // Capture install prompt
+    // Detect iOS for specific install instructions
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isIos = /iphone|ipad|ipod/.test(userAgent);
+    const isInStandaloneMode = ('standalone' in window.navigator) && (window.navigator as any).standalone;
+
+    if (isIos && !isInStandaloneMode) {
+      if (!sessionStorage.getItem('pwa_banner_dismissed')) {
+        setIsIosPrompt(true);
+        setShowBanner(true);
+      }
+    }
+
+    // Capture install prompt for Android/Desktop
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -77,18 +90,24 @@ export function PWAInstallBanner() {
             </div>
             <div>
               <h4 className="font-headline-md text-sm font-bold text-on-surface">Install BabyJat App</h4>
-              <p className="font-body-md text-xs text-secondary">Add to home screen for fast offline booking &amp; updates</p>
+              {isIosPrompt ? (
+                <p className="font-body-md text-[10px] md:text-xs text-secondary leading-tight mt-1">Tap <span className="material-symbols-outlined text-[12px] align-middle">ios_share</span> Share then <strong>Add to Home Screen</strong> to install.</p>
+              ) : (
+                <p className="font-body-md text-xs text-secondary">Add to home screen for fast offline booking &amp; updates</p>
+              )}
             </div>
           </div>
-
+          
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleInstallClick}
-              className="px-3.5 py-1.5 bg-primary text-on-primary rounded-xl text-xs font-label-caps font-bold hover:bg-primary-container transition-colors shadow-sm flex items-center gap-1"
-            >
-              <span className="material-symbols-outlined text-sm">download</span>
-              Install
-            </button>
+            {!isIosPrompt && (
+              <button
+                onClick={handleInstallClick}
+                className="px-3.5 py-1.5 bg-primary text-on-primary rounded-xl text-xs font-label-caps font-bold hover:bg-primary-container transition-colors shadow-sm flex items-center gap-1"
+              >
+                <span className="material-symbols-outlined text-sm">download</span>
+                Install
+              </button>
+            )}
             <button
               onClick={handleDismiss}
               className="p-1 text-secondary hover:text-on-surface transition-colors"

@@ -37,8 +37,27 @@ export default function CheckoutCallback() {
   }, [orderTrackingId, orderMerchantReference]);
 
   return (
-    <main className="flex-grow flex items-center justify-center min-h-[60vh] px-margin-mobile">
-      <div className="glass-panel p-8 rounded-xl max-w-md w-full text-center">
+    <main className="flex-grow flex items-center justify-center min-h-[60vh] px-margin-mobile py-8">
+      <div className="glass-panel p-8 rounded-2xl max-w-md w-full text-center space-y-6">
+        
+        {/* Top Back Navigation Option */}
+        <div className="flex items-center justify-between border-b border-outline/10 pb-4">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-secondary hover:text-primary transition-colors bg-surface-container-low px-3 py-1.5 rounded-full border border-outline/10"
+          >
+            <span className="material-symbols-outlined text-sm">arrow_back</span>
+            <span>Back to Previous Page</span>
+          </button>
+          <Link
+            to="/cart"
+            className="text-xs font-bold text-primary hover:underline"
+          >
+            Return to Cart
+          </Link>
+        </div>
+
         {status === 'loading' && (
           <div className="flex flex-col items-center">
             <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
@@ -54,9 +73,18 @@ export default function CheckoutCallback() {
             </div>
             <h2 className="font-headline-md text-headline-md text-on-surface mb-2">Payment Successful!</h2>
             <p className="font-body-md text-secondary mb-6">Your order #{orderMerchantReference?.slice(0,6)} has been placed.</p>
-            <Link to="/profile" className="w-full block bg-primary text-on-primary font-label-caps text-label-caps py-3 rounded-DEFAULT hover:bg-primary-container transition-colors">
-              View Order History
-            </Link>
+            <div className="w-full space-y-2">
+              <Link to="/profile" className="w-full block bg-primary text-on-primary font-label-caps text-label-caps py-3 rounded-xl hover:bg-primary-container transition-colors">
+                View Order History
+              </Link>
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className="w-full block bg-surface-container-low text-secondary font-label-caps text-xs py-2.5 rounded-xl border border-outline/10 hover:text-on-surface transition-colors"
+              >
+                ← Back to Previous Page
+              </button>
+            </div>
           </div>
         )}
 
@@ -67,9 +95,19 @@ export default function CheckoutCallback() {
             </div>
             <h2 className="font-headline-md text-headline-md text-on-surface mb-2">Payment Verification Failed</h2>
             <p className="font-body-md text-secondary mb-6">There was an issue verifying your payment. If you were charged, please contact support.</p>
-            <Link to="/profile" className="w-full block bg-transparent border border-on-surface text-on-surface font-label-caps text-label-caps py-3 rounded-DEFAULT hover:bg-surface-variant transition-colors">
-              Go to Profile
-            </Link>
+            <div className="w-full space-y-2">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className="w-full block bg-primary text-on-primary font-label-caps text-xs py-3 rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-sm">arrow_back</span>
+                Back to Previous Page
+              </button>
+              <Link to="/cart" className="w-full block bg-surface-container-low text-on-surface font-label-caps text-xs py-3 rounded-xl border border-outline/10 hover:bg-surface-container-high transition-colors">
+                Return to Cart
+              </Link>
+            </div>
           </div>
         )}
       </div>

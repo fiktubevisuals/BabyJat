@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, setPersistence, browserLocalPersistence, inMemoryPersistence } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -7,6 +7,12 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+
+// Configure resilient auth persistence
+setPersistence(auth, browserLocalPersistence).catch(() => {
+  setPersistence(auth, inMemoryPersistence).catch((e) => console.warn("In-memory auth fallback:", e));
+});
+
 export const storage = getStorage(app);
 
 // Helper for strict errors
@@ -52,20 +58,26 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     },
     operationType,
     path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  };
+  console.error('Firestore Error Details:', errInfo);
+  throw new Error('An unexpected database error occurred. Please try again or re-authenticate.');
 }
 
 export async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'system', 'connection_test'));
   } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. The client is offline.");
+    if (error instanceof Error && (error.message.includes('offline') || error.message.includes('Backend didn\'t respond'))) {
+      console.warn("Firestore operating in offline/cached mode:", error.message);
+    } else {
+      console.warn("Firestore initial connection check note:", error);
     }
   }
 }
 
-// Automatically test connection on boot
-testConnection();
+// Automatically test connection on boot without blocking initial render
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    testConnection();
+  }, 1000);
+}

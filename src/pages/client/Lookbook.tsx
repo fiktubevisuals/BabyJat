@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { GalleryEditorModal } from './GalleryEditorModal';
+import { SEOHead } from '../../components/SEOHead';
 
-interface GalleryItem {
+export interface GalleryItem {
   id: string;
   title: string;
   stylist: string;
@@ -29,7 +30,7 @@ export default function Lookbook() {
         fetched.push({ id: doc.id, ...doc.data() } as GalleryItem);
       });
       setItems(fetched);
-    });
+    }, (err) => console.warn("Lookbook snapshot error:", err));
     return () => unsub();
   }, []);
 
@@ -66,7 +67,8 @@ export default function Lookbook() {
   };
 
   return (
-    <main className="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop w-full mt-stack-md md:mt-stack-lg pt-8 relative">
+    <main className="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop w-full pt-8 md:pt-12 relative">
+      <SEOHead pageKey="lookbook" />
       {profile?.role === 'admin' && (
         <button 
           onClick={() => openEditor()}
@@ -87,12 +89,6 @@ export default function Lookbook() {
           }} 
         />
       )}
-
-      {/* Header Section */}
-      <div className="text-center mb-stack-lg">
-        <h1 className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-primary mb-base">Style Lookbook</h1>
-        <p className="font-body-md text-body-md text-secondary max-w-2xl mx-auto">Discover our signature styles, crafted by top-tier stylists. High-end salon perfection, ready for you.</p>
-      </div>
 
       {/* Filter Chips */}
       <div className="flex overflow-x-auto no-scrollbar gap-stack-sm mb-stack-lg pb-2 -mx-margin-mobile px-margin-mobile md:mx-0 md:px-0">
@@ -119,7 +115,7 @@ export default function Lookbook() {
             return (
               <div key={item.id} className={`group relative overflow-hidden rounded-lg bg-surface-container-low cursor-pointer block ${spanClass}`}>
                 <div className={`${aspectClass} w-full overflow-hidden`}>
-                  <img className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" src={item.imageUrl} alt={item.title} />
+                  <img className="w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105" src={item.imageUrl} alt={item.title} />
                 </div>
                 
                 <div className="absolute inset-0 bg-background/10 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-stack-md border-[0.5px] border-on-primary/20">

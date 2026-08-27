@@ -80,6 +80,9 @@ export function ConsultationChatModal({
       } as Message));
       setMessages(msgs);
       setLoading(false);
+    }, (err) => {
+      console.warn("Messages snapshot ended:", err);
+      setLoading(false);
     });
 
     return () => unsub();

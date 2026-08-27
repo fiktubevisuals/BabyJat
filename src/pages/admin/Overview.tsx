@@ -1,11 +1,44 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Chart from 'chart.js/auto';
+import { collection, onSnapshot, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function Overview() {
   const { user, profile } = useAuth();
+  const navigate = useNavigate();
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<Chart | null>(null);
+
+  const [lowStockProducts, setLowStockProducts] = useState<any[]>([]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
+      const prods: any[] = [];
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        if ((d.stock ?? 0) <= 5) {
+          prods.push({ id: doc.id, ...d });
+        }
+      });
+      setLowStockProducts(prods);
+    }, (err) => {
+      console.warn("Overview products snapshot error:", err);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleQuickRestock = async (productId: string, currentStock: number) => {
+    try {
+      await setDoc(doc(db, 'products', productId), {
+        stock: (currentStock || 0) + 10,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   useEffect(() => {
     if (chartRef.current) {
@@ -252,47 +285,45 @@ export default function Overview() {
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center space-x-2">
               <h3 className="font-headline-md text-headline-md text-on-surface">Inventory Alerts</h3>
-              <span className="bg-error text-on-error text-[10px] font-bold px-2 py-0.5 rounded-full">3</span>
+              <span className="bg-error text-on-error text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {lowStockProducts.length}
+              </span>
             </div>
-            <button className="text-primary text-xs font-bold hover:underline">Reorder</button>
+            <button onClick={() => navigate('/admin/inventory')} className="text-primary text-xs font-bold hover:underline">
+              Manage Stock
+            </button>
           </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg border border-error/20 bg-error-container/10">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-md bg-surface-variant overflow-hidden">
-                  <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAm2wZjCBO9xqWih3OUxAZt9Te3Pl6gTy4kI4tTl50ryxf_LMFc3w9sDud8fSHCVCMyRpZ_tucpchx91BlsR-qxDkUDE5AU2j3aeojUx__gJZzD7FXeAmryB60ku2-TmjU-AZQiE37jBdrjZ2tbNQeWdn3XH56ik7OwaWgMRnBJZOWxmK4yP0lUJZg49-xC-YecZVlJpyyvVnufrQHsXdGcIShSgbLl8GcD4A8MJnv1DQKXzRDQkxrppg" alt="Product" className="w-full h-full object-cover"/>
-                </div>
-                <div>
-                  <h4 className="font-body-md font-bold">Lumina Silk Serum</h4>
-                  <p className="text-xs text-error font-bold">2 units left</p>
-                </div>
+          <div className="space-y-4 max-h-[250px] overflow-y-auto">
+            {lowStockProducts.length === 0 ? (
+              <div className="text-center py-6 text-xs text-secondary border border-dashed border-outline/20 rounded-xl">
+                All inventory levels are optimal! ✓
               </div>
-              <button className="p-2 text-secondary hover:text-primary transition-colors"><span className="material-symbols-outlined">add_shopping_cart</span></button>
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg border border-outline/10 hover:bg-surface-container-low">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-md bg-surface-variant overflow-hidden">
-                  <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCl43bZbpBWR0oCSq0objQXwl6sav0pGjHmIFjKAxcKBMRGOUoK6qKDNH93GSoDYQbAZ6dFDrvLbzBGnZq-xLMEjN49w1gVtxYoFqxnoC2u9eEboYhnOKwjpQZwE469ZgFD99Cg-6szBI1hCTrN-dj2jfJeooizReDO4RgXeE2nxeqwlKD9OIJXV_vAbgSX6rTImDLnmc0hTzE7YanY0gwB2e7oVyUEoNRGyK2SpRyWEt6Z422ZFFcqxg" alt="Product" className="w-full h-full object-cover"/>
+            ) : (
+              lowStockProducts.map((p) => (
+                <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border border-error/20 bg-error-container/10">
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <div className="w-10 h-10 rounded-md bg-surface-variant overflow-hidden shrink-0 flex items-center justify-center">
+                      {p.imageUrl ? (
+                        <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover"/>
+                      ) : (
+                        <span className="material-symbols-outlined text-sm text-secondary">inventory_2</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-body-md font-bold text-sm truncate">{p.name}</h4>
+                      <p className="text-xs text-error font-bold">{p.stock ?? 0} units left</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleQuickRestock(p.id, p.stock)}
+                    className="p-1.5 text-xs bg-primary/10 text-primary hover:bg-primary/20 rounded font-label-caps whitespace-nowrap ml-2"
+                    title="Restock +10"
+                  >
+                    +10 Restock
+                  </button>
                 </div>
-                <div>
-                  <h4 className="font-body-md font-bold">Hydrating Shampoo (Backbar)</h4>
-                  <p className="text-xs text-tertiary font-bold">4 units left</p>
-                </div>
-              </div>
-              <button className="p-2 text-secondary hover:text-primary transition-colors"><span className="material-symbols-outlined">add_shopping_cart</span></button>
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg border border-outline/10 hover:bg-surface-container-low">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-md bg-surface-variant overflow-hidden">
-                  <div className="w-full h-full bg-surface-container-high flex items-center justify-center text-xs text-secondary">Color</div>
-                </div>
-                <div>
-                  <h4 className="font-body-md font-bold">Ash Blonde Toner (9V)</h4>
-                  <p className="text-xs text-tertiary font-bold">5 tubes left</p>
-                </div>
-              </div>
-              <button className="p-2 text-secondary hover:text-primary transition-colors"><span className="material-symbols-outlined">add_shopping_cart</span></button>
-            </div>
+              ))
+            )}
           </div>
         </div>
       </div>

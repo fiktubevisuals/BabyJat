@@ -10,6 +10,10 @@ interface UserData {
   role: 'client' | 'admin' | 'stylist';
   createdAt?: any;
   stylistNotes?: string;
+  hairFormula?: string;
+  allergies?: string;
+  hairTexture?: string;
+  clientPreferences?: string;
 }
 
 export default function Customers() {
@@ -26,6 +30,10 @@ export default function Customers() {
   }>({ appointments: [], orders: [], lifetimeSpend: 0, loading: false });
 
   const [notesDraft, setNotesDraft] = useState('');
+  const [formulaDraft, setFormulaDraft] = useState('');
+  const [allergiesDraft, setAllergiesDraft] = useState('');
+  const [textureDraft, setTextureDraft] = useState('');
+  const [preferencesDraft, setPreferencesDraft] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -60,6 +68,10 @@ export default function Customers() {
   const openProfile = async (user: UserData) => {
     setSelectedUser(user);
     setNotesDraft(user.stylistNotes || '');
+    setFormulaDraft(user.hairFormula || '');
+    setAllergiesDraft(user.allergies || '');
+    setTextureDraft(user.hairTexture || '');
+    setPreferencesDraft(user.clientPreferences || '');
     setUserHistory({ appointments: [], orders: [], lifetimeSpend: 0, loading: true });
 
     try {
@@ -91,10 +103,21 @@ export default function Customers() {
     try {
       await updateDoc(doc(db, 'users', selectedUser.id), {
         stylistNotes: notesDraft,
+        hairFormula: formulaDraft,
+        allergies: allergiesDraft,
+        hairTexture: textureDraft,
+        clientPreferences: preferencesDraft,
         updatedAt: serverTimestamp()
       });
-      setSelectedUser({ ...selectedUser, stylistNotes: notesDraft });
-      alert('Notes saved successfully.');
+      setSelectedUser({
+        ...selectedUser,
+        stylistNotes: notesDraft,
+        hairFormula: formulaDraft,
+        allergies: allergiesDraft,
+        hairTexture: textureDraft,
+        clientPreferences: preferencesDraft
+      });
+      alert('Client CRM Profile & Technical Formulas saved.');
       fetchUsers(); // Refresh background list
     } catch (err) {
       console.error(err);
@@ -187,16 +210,73 @@ export default function Customers() {
                 </div>
               </div>
 
+              {/* Technical CRM & Hair Formulas */}
+              <div className="bg-surface-container-low p-4 rounded-xl border border-outline/10 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-label-caps text-xs text-primary font-bold flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">science</span> Technical Hair Formulas & Sensitivities
+                  </h4>
+                  <button onClick={saveNotes} className="bg-primary text-on-primary px-3 py-1 rounded-lg text-xs font-label-caps hover:opacity-90">
+                    Save CRM Profile
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-label-caps text-secondary mb-1">Color & Technical Formula</label>
+                  <input
+                    type="text"
+                    value={formulaDraft}
+                    onChange={e => setFormulaDraft(e.target.value)}
+                    placeholder="e.g. 6N + 7G 20vol root touchup, 10-min gloss"
+                    className="w-full p-2.5 bg-surface-container-lowest border border-outline/20 rounded-lg text-xs focus:outline-primary"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-label-caps text-secondary mb-1">Allergies & Sensitivities</label>
+                    <input
+                      type="text"
+                      value={allergiesDraft}
+                      onChange={e => setAllergiesDraft(e.target.value)}
+                      placeholder="e.g. Sensitive scalp, Ammonia allergy"
+                      className="w-full p-2.5 bg-surface-container-lowest border border-outline/20 rounded-lg text-xs focus:outline-primary text-error"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-label-caps text-secondary mb-1">Hair Type & Texture</label>
+                    <input
+                      type="text"
+                      value={textureDraft}
+                      onChange={e => setTextureDraft(e.target.value)}
+                      placeholder="e.g. Fine, High Porosity, 2B Wavy"
+                      className="w-full p-2.5 bg-surface-container-lowest border border-outline/20 rounded-lg text-xs focus:outline-primary"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-label-caps text-secondary mb-1">Styling & Beverage Preferences</label>
+                  <input
+                    type="text"
+                    value={preferencesDraft}
+                    onChange={e => setPreferencesDraft(e.target.value)}
+                    placeholder="e.g. Silent appointment, warm jasmine tea"
+                    className="w-full p-2.5 bg-surface-container-lowest border border-outline/20 rounded-lg text-xs focus:outline-primary"
+                  />
+                </div>
+              </div>
+
               <div>
-                <h4 className="font-label-caps text-sm mb-2 flex items-center justify-between">
-                  Private Stylist Notes
+                <h4 className="font-label-caps text-xs text-secondary mb-2 flex items-center justify-between">
+                  Private Stylist & Consultation Notes
                   <button onClick={saveNotes} className="text-primary hover:underline text-xs">Save</button>
                 </h4>
                 <textarea 
                   value={notesDraft}
                   onChange={e => setNotesDraft(e.target.value)}
-                  placeholder="Formulas, allergies, preferences..."
-                  className="w-full h-32 p-3 bg-surface-container-lowest border border-outline/20 rounded-xl text-sm focus:outline-primary resize-none"
+                  placeholder="Additional observations, previous appointment notes..."
+                  className="w-full h-24 p-3 bg-surface-container-lowest border border-outline/20 rounded-xl text-xs focus:outline-primary resize-none"
                 />
               </div>
 

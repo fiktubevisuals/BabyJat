@@ -16,6 +16,7 @@ import Lookbook from './pages/client/Lookbook';
 import CopperMuse from './pages/client/CopperMuse';
 import LuminaSerum from './pages/client/LuminaSerum';
 import Cart from './pages/client/Cart';
+import GiftCards from './pages/client/GiftCards';
 import CheckoutCallback from './pages/client/CheckoutCallback';
 import Login from './pages/client/Login';
 
@@ -28,6 +29,7 @@ import PlatformFeatures from './pages/admin/PlatformFeatures';
 import POS from './pages/admin/POS';
 import ServicesManager from './pages/admin/ServicesManager';
 import StaffManager from './pages/admin/StaffManager';
+import ContentManager from './pages/admin/ContentManager';
 
 export default function App() {
   return (
@@ -46,6 +48,7 @@ export default function App() {
             <Route path="/lookbook" element={<ClientLayout><Lookbook /></ClientLayout>} />
             <Route path="/lookbook/copper-muse" element={<ClientLayout><CopperMuse /></ClientLayout>} />
             <Route path="/shop/lumina-serum" element={<ClientLayout><LuminaSerum /></ClientLayout>} />
+            <Route path="/gift-cards" element={<ClientLayout><GiftCards /></ClientLayout>} />
             <Route path="/cart" element={<ClientLayout><Cart /></ClientLayout>} />
             <Route path="/checkout/callback" element={<ClientLayout><CheckoutCallback /></ClientLayout>} />
             <Route path="/login" element={<Login />} />
@@ -54,6 +57,7 @@ export default function App() {
             <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminLayout><AdminOverview /></AdminLayout></ProtectedRoute>} />
             <Route path="/admin/pos" element={<ProtectedRoute requireAdmin><AdminLayout><POS /></AdminLayout></ProtectedRoute>} />
             <Route path="/admin/services-manager" element={<ProtectedRoute requireAdmin><AdminLayout><ServicesManager /></AdminLayout></ProtectedRoute>} />
+            <Route path="/admin/content" element={<ProtectedRoute requireAdmin><AdminLayout><ContentManager /></AdminLayout></ProtectedRoute>} />
             <Route path="/admin/staff" element={<ProtectedRoute requireAdmin><AdminLayout><StaffManager /></AdminLayout></ProtectedRoute>} />
             <Route path="/admin/appointments" element={<ProtectedRoute requireAdmin><AdminLayout><AdminAppointments /></AdminLayout></ProtectedRoute>} />
             <Route path="/admin/inventory" element={<ProtectedRoute requireAdmin><AdminLayout><AdminInventory /></AdminLayout></ProtectedRoute>} />

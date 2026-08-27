@@ -1,8 +1,16 @@
 import { Link } from 'react-router-dom';
+import { SEOHead } from '../../components/SEOHead';
 
 export default function CopperMuse() {
   return (
     <main className="max-w-container-max mx-auto px-0 md:px-margin-desktop grid grid-cols-1 md:grid-cols-12 gap-x-gutter">
+      <SEOHead 
+        pageKey="services"
+        serviceId="copper-muse" 
+        serviceName="The Copper Muse" 
+        fallbackTitle="The Copper Muse Look | BabyJat Salon" 
+        fallbackDescription="A vibrant cascade of rich copper and amber tones with high-gloss finish." 
+      />
       {/* Hero Section (Left Column on Desktop) */}
       <section className="md:col-span-7 mb-stack-md md:mb-0">
         <div className="w-full h-[530px] md:h-[707px] relative overflow-hidden bg-surface-container-low group rounded-none md:rounded-xl">

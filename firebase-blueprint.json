@@ -58,6 +58,42 @@
         "updatedAt": { "type": "timestamp" }
       },
       "required": ["clientId", "items", "total", "status", "createdAt", "updatedAt"]
+    },
+    "GiftCard": {
+      "title": "GiftCard",
+      "description": "Digital gift voucher.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "maxLength": 50 },
+        "amount": { "type": "number" },
+        "balance": { "type": "number" },
+        "themeId": { "type": "string", "maxLength": 50 },
+        "recipientName": { "type": "string", "maxLength": 100 },
+        "recipientEmail": { "type": "string", "maxLength": 100 },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "senderEmail": { "type": "string", "maxLength": 100 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "giftNote": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["active", "redeemed", "expired"] },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["code", "amount", "balance", "recipientName", "recipientEmail", "senderName", "senderId", "status", "createdAt"]
+    },
+    "Hairstyle": {
+      "title": "Hairstyle",
+      "description": "AI Try-On Hairstyle Option.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "category": { "type": "string", "maxLength": 50 },
+        "description": { "type": "string", "maxLength": 500 },
+        "estimatedTime": { "type": "string", "maxLength": 50 },
+        "servicePrice": { "type": "string", "maxLength": 50 },
+        "iconSymbol": { "type": "string", "maxLength": 50 },
+        "overlayStyle": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["name", "category", "estimatedTime", "servicePrice"]
     }
   },
   "firestore": {
@@ -76,6 +112,14 @@
     "orders/{orderId}": {
       "schema": { "$ref": "#/entities/Order" },
       "description": "Client shop orders."
+    },
+    "giftcards/{cardId}": {
+      "schema": { "$ref": "#/entities/GiftCard" },
+      "description": "Digital gift vouchers."
+    },
+    "hairstyles/{hairstyleId}": {
+      "schema": { "$ref": "#/entities/Hairstyle" },
+      "description": "AI Try-On Hairstyle catalog items."
     },
     "system/{docId}": {
       "schema": "any",

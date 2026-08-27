@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
+import { SEOHead } from '../../components/SEOHead';
 
 export default function LuminaSerum() {
   const { addToCart } = useCart();
@@ -20,6 +21,13 @@ export default function LuminaSerum() {
 
   return (
     <main className="max-w-container-max mx-auto md:px-margin-desktop px-0 pb-[100px] md:pb-[120px]">
+      <SEOHead 
+        pageKey="shop" 
+        productId="lumina-serum" 
+        productName="Lumina Silk Hair Serum" 
+        fallbackTitle="Lumina Silk Hair Serum | BabyJat Shop" 
+        fallbackDescription="Transform dull locks into liquid glass with Lumina Silk Hair Serum. Infused with argan oil & heat defense." 
+      />
       <div className="grid grid-cols-1 md:grid-cols-12 gap-0 md:gap-gutter mt-0 md:mt-stack-md">
         {/* Product Image Hero (Left Col Desktop) */}
         <div className="col-span-1 md:col-span-7 relative bg-surface-container-low md:rounded-xl overflow-hidden h-[530px] md:h-[707px]">

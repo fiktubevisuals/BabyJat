@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, updateDoc, query, orderBy, serverTimestamp, setDoc, getDocs, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { ConsultationChatModal } from '../../components/ConsultationChatModal';
+import { AutomatedRemindersManager } from '../../components/admin/AutomatedRemindersManager';
 
 interface Appointment {
   id: string;
@@ -27,7 +28,7 @@ export default function Appointments() {
   const [users, setUsers] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   
-  const [activeTab, setActiveTab] = useState<'calendar' | 'waitlist'>('calendar');
+  const [activeTab, setActiveTab] = useState<'calendar' | 'reminders' | 'waitlist'>('calendar');
   const [showWaitlistModal, setShowWaitlistModal] = useState(false);
   const [newWaitlist, setNewWaitlist] = useState({ clientName: '', requestedDate: '', notes: '' });
   const [activeChatApt, setActiveChatApt] = useState<Appointment | null>(null);
@@ -35,7 +36,7 @@ export default function Appointments() {
   useEffect(() => {
     const unsubApts = onSnapshot(query(collection(db, 'appointments'), orderBy('date', 'desc')), (snapshot) => {
       setAppointments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Appointment)));
-    });
+    }, (err) => console.warn("Appointments snapshot ended:", err));
 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       const usersMap: Record<string, any> = {};
@@ -44,11 +45,11 @@ export default function Appointments() {
       });
       setUsers(usersMap);
       setLoading(false);
-    });
+    }, (err) => console.warn("Users snapshot ended:", err));
 
     const unsubWait = onSnapshot(query(collection(db, 'waitlist'), orderBy('createdAt', 'desc')), (snapshot) => {
       setWaitlist(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WaitlistEntry)));
-    });
+    }, (err) => console.warn("Waitlist snapshot ended:", err));
 
     return () => { unsubApts(); unsubUsers(); unsubWait(); };
   }, []);
@@ -143,16 +144,23 @@ export default function Appointments() {
         </div>
       </div>
 
-      <div className="flex gap-4 mb-6 border-b border-outline/10">
+      <div className="flex gap-4 mb-6 border-b border-outline/10 overflow-x-auto">
         <button 
           onClick={() => setActiveTab('calendar')}
-          className={`pb-2 px-2 font-label-caps text-sm border-b-2 transition-colors ${activeTab === 'calendar' ? 'border-primary text-primary' : 'border-transparent text-secondary hover:text-on-surface'}`}
+          className={`pb-2 px-2 font-label-caps text-sm border-b-2 transition-colors shrink-0 ${activeTab === 'calendar' ? 'border-primary text-primary font-bold' : 'border-transparent text-secondary hover:text-on-surface'}`}
         >
           Appointments
         </button>
         <button 
+          onClick={() => setActiveTab('reminders')}
+          className={`pb-2 px-2 font-label-caps text-sm border-b-2 transition-colors flex items-center gap-2 shrink-0 ${activeTab === 'reminders' ? 'border-primary text-primary font-bold' : 'border-transparent text-secondary hover:text-on-surface'}`}
+        >
+          <span className="material-symbols-outlined text-sm">notifications_active</span>
+          Automated Reminders (SMS &amp; WhatsApp)
+        </button>
+        <button 
           onClick={() => setActiveTab('waitlist')}
-          className={`pb-2 px-2 font-label-caps text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'waitlist' ? 'border-primary text-primary' : 'border-transparent text-secondary hover:text-on-surface'}`}
+          className={`pb-2 px-2 font-label-caps text-sm border-b-2 transition-colors flex items-center gap-2 shrink-0 ${activeTab === 'waitlist' ? 'border-primary text-primary font-bold' : 'border-transparent text-secondary hover:text-on-surface'}`}
         >
           Waitlist
           {waitlist.filter(w => w.status === 'waiting').length > 0 && (
@@ -162,6 +170,10 @@ export default function Appointments() {
           )}
         </button>
       </div>
+
+      {activeTab === 'reminders' && (
+        <AutomatedRemindersManager appointments={appointments} usersMap={users} />
+      )}
 
       {activeTab === 'calendar' && (
         <div className="bg-surface-container-lowest rounded-2xl p-4 md:p-6 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] border border-outline/5">

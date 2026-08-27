@@ -49,6 +49,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             <span className="material-symbols-outlined" style={{ fontVariationSettings: location.pathname === '/admin/services-manager' ? "'FILL' 1" : "" }}>spa</span>
             <span className="font-label-caps text-label-caps">Services Menu</span>
           </Link>
+          <Link to="/admin/content" className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-300 ${location.pathname === '/admin/content' ? 'bg-primary text-on-primary font-bold shadow-[0_8px_15px_-5px_rgba(182,0,85,0.3)] scale-[0.98]' : 'text-on-surface-variant hover:bg-surface-variant/50 hover:bg-primary-container/10'}`}>
+            <span className="material-symbols-outlined" style={{ fontVariationSettings: location.pathname === '/admin/content' ? "'FILL' 1" : "" }}>web</span>
+            <span className="font-label-caps text-label-caps">Content Manager</span>
+          </Link>
           <Link to="/admin/staff" className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-300 ${location.pathname === '/admin/staff' ? 'bg-primary text-on-primary font-bold shadow-[0_8px_15px_-5px_rgba(182,0,85,0.3)] scale-[0.98]' : 'text-on-surface-variant hover:bg-surface-variant/50 hover:bg-primary-container/10'}`}>
             <span className="material-symbols-outlined" style={{ fontVariationSettings: location.pathname === '/admin/staff' ? "'FILL' 1" : "" }}>badge</span>
             <span className="font-label-caps text-label-caps">Staff & Scheduling</span>

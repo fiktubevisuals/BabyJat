@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { compressImageToBase64 } from '../../utils/imageUtils';
 
 export function GalleryEditorModal({ data, onSave, onClose }: any) {
