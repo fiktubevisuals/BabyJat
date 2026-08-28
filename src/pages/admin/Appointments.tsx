@@ -3,6 +3,7 @@ import { collection, onSnapshot, doc, updateDoc, query, orderBy, serverTimestamp
 import { db } from '../../lib/firebase';
 import { ConsultationChatModal } from '../../components/ConsultationChatModal';
 import { AutomatedRemindersManager } from '../../components/admin/AutomatedRemindersManager';
+import { ReceiptModal, ReceiptData } from '../../components/receipts/ReceiptModal';
 
 interface Appointment {
   id: string;
@@ -32,6 +33,36 @@ export default function Appointments() {
   const [showWaitlistModal, setShowWaitlistModal] = useState(false);
   const [newWaitlist, setNewWaitlist] = useState({ clientName: '', requestedDate: '', notes: '' });
   const [activeChatApt, setActiveChatApt] = useState<Appointment | null>(null);
+  const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null);
+
+  const handleGenerateReceipt = (apt: Appointment) => {
+    const client = users[apt.clientId];
+    const stylist = getStylistName(apt.stylistId);
+    
+    const receiptData: ReceiptData = {
+      receiptNumber: `BJ-APT-${apt.id.slice(0, 8).toUpperCase()}`,
+      appointmentId: apt.id,
+      clientName: client?.displayName || client?.name || 'Valued Client',
+      clientPhone: client?.phone || client?.phoneNumber,
+      clientEmail: client?.email,
+      stylistName: stylist,
+      items: [
+        {
+          name: apt.serviceName,
+          quantity: 1,
+          price: apt.price || 150000,
+          type: 'service'
+        }
+      ],
+      subtotal: apt.price || 150000,
+      total: apt.price || 150000,
+      paymentMethod: 'Pesapal / Mobile Money',
+      paymentReference: `APT_${apt.id.slice(0, 6)}`,
+      createdAt: apt.date ? new Date(apt.date) : new Date()
+    };
+
+    setActiveReceipt(receiptData);
+  };
 
   useEffect(() => {
     const unsubApts = onSnapshot(query(collection(db, 'appointments'), orderBy('date', 'desc')), (snapshot) => {
@@ -204,6 +235,13 @@ export default function Appointments() {
                   
                   <div className="flex flex-wrap gap-2">
                     <button
+                      onClick={() => handleGenerateReceipt(apt)}
+                      className="bg-surface-container-high border border-outline/20 text-on-surface px-3 py-2 rounded-lg font-label-caps text-[10px] hover:bg-surface-container-highest transition-colors flex items-center gap-1"
+                    >
+                      <span className="material-symbols-outlined text-xs text-primary">receipt_long</span>
+                      Receipt
+                    </button>
+                    <button
                       onClick={() => setActiveChatApt(apt)}
                       className="bg-surface border border-primary/40 text-primary px-3 py-2 rounded-lg font-label-caps text-[10px] hover:bg-primary-container/20 transition-colors flex items-center gap-1"
                     >
@@ -314,6 +352,15 @@ export default function Appointments() {
           date={activeChatApt.date}
           isStylistView={true}
           onClose={() => setActiveChatApt(null)}
+        />
+      )}
+
+      {/* Official 80mm / A4 Receipt Modal */}
+      {activeReceipt && (
+        <ReceiptModal
+          isOpen={Boolean(activeReceipt)}
+          onClose={() => setActiveReceipt(null)}
+          data={activeReceipt}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { ReceiptModal, ReceiptData } from '../../components/receipts/ReceiptModal';
 
 interface VerificationData {
   success: boolean;
@@ -20,6 +21,7 @@ export default function CheckoutCallback() {
   const [data, setData] = useState<VerificationData | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [rechecking, setRechecking] = useState(false);
+  const [showReceipt, setShowReceipt] = useState(false);
 
   const orderTrackingId = searchParams.get('OrderTrackingId') || searchParams.get('order_tracking_id');
   const orderMerchantReference = searchParams.get('OrderMerchantReference') || searchParams.get('OrderReference') || searchParams.get('orderId');
@@ -46,25 +48,26 @@ export default function CheckoutCallback() {
         })
       });
 
-      const resData: VerificationData = await response.json();
-      setData(resData);
+      const result: VerificationData = await response.json();
 
-      if (resData.success && resData.status === 'COMPLETED') {
+      if (response.ok && result.success && result.status === 'COMPLETED') {
+        setData(result);
         setStatus('success');
-      } else if (resData.status === 'PENDING') {
+      } else if (result.status === 'PENDING') {
+        setData(result);
         setStatus('pending');
       } else {
         setStatus('error');
-        setErrorMessage(resData.message || 'Payment verification was unsuccessful.');
+        setErrorMessage(result.message || 'Payment verification did not complete successfully.');
       }
     } catch (err: any) {
-      console.error('Checkout verification network error:', err);
+      console.error('Payment Verification Network Error:', err);
       setStatus('error');
-      setErrorMessage('Unable to reach verification server. Please try re-checking.');
+      setErrorMessage('Could not connect to payment verification server. Please try again.');
     } finally {
       setRechecking(false);
     }
-  }, [orderTrackingId, orderMerchantReference]);
+  }, [orderMerchantReference, orderTrackingId]);
 
   useEffect(() => {
     verifyPayment();
@@ -72,31 +75,34 @@ export default function CheckoutCallback() {
 
   const isGiftCard = orderMerchantReference?.startsWith('GC_');
 
-  return (
-    <main className="flex-grow flex items-center justify-center min-h-[65vh] px-margin-mobile py-10">
-      <div className="glass-panel p-8 rounded-2xl max-w-lg w-full text-center space-y-6 shadow-2xl border border-outline/10">
-        
-        {/* Navigation Header */}
-        <div className="flex items-center justify-between border-b border-outline/10 pb-4">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-secondary hover:text-primary transition-colors bg-surface-container-low px-3 py-1.5 rounded-full border border-outline/10"
-          >
-            <span className="material-symbols-outlined text-sm">arrow_back</span>
-            <span>Back</span>
-          </button>
-          <Link
-            to={isGiftCard ? "/gift-cards" : "/cart"}
-            className="text-xs font-bold text-primary hover:underline"
-          >
-            {isGiftCard ? "Gift Cards" : "Return to Cart"}
-          </Link>
-        </div>
+  // Build receipt payload if data exists
+  const receiptData: ReceiptData | null = data ? {
+    receiptNumber: orderMerchantReference || 'REC-ONLINE',
+    orderId: orderMerchantReference || undefined,
+    clientName: data.orderData?.customerName || data.orderData?.recipientName || 'Valued Client',
+    clientEmail: data.orderData?.customerEmail || data.orderData?.recipientEmail,
+    items: data.orderData?.items || [
+      {
+        name: isGiftCard ? 'Luxury Digital Gift Voucher' : 'Salon Boutique Order',
+        quantity: 1,
+        price: data.amount || 0,
+        type: isGiftCard ? 'service' : 'product'
+      }
+    ],
+    subtotal: data.amount || 0,
+    total: data.amount || 0,
+    paymentMethod: data.paymentMethod || 'Pesapal / Mobile Money',
+    paymentReference: data.confirmationCode || orderTrackingId || undefined,
+    createdAt: new Date()
+  } : null;
 
+  return (
+    <main className="max-w-xl mx-auto px-4 py-12 md:py-20 text-center">
+      <div className="bg-surface p-6 md:p-8 rounded-3xl border border-outline/10 shadow-xl">
+        
         {/* 1. Loading State */}
         {status === 'loading' && (
-          <div className="flex flex-col items-center py-6">
+          <div className="flex flex-col items-center py-8">
             <div className="w-14 h-14 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-5" />
             <h2 className="font-headline-md text-headline-md text-on-surface">Verifying Payment Securely</h2>
             <p className="font-body-md text-secondary text-sm mt-2 max-w-xs">
@@ -121,7 +127,6 @@ export default function CheckoutCallback() {
                 : `Thank you for choosing BabyJat. Your order #${orderMerchantReference?.slice(0, 8)} is confirmed.`}
             </p>
 
-            {/* Receipt Summary Card */}
             <div className="w-full bg-surface-container-low rounded-xl p-4 text-left border border-outline/10 mb-6 space-y-2 text-xs">
               <div className="flex justify-between py-1 border-b border-outline/5">
                 <span className="text-secondary">Reference:</span>
@@ -149,6 +154,17 @@ export default function CheckoutCallback() {
 
             {/* Action Links */}
             <div className="w-full space-y-2.5">
+              {receiptData && (
+                <button
+                  type="button"
+                  onClick={() => setShowReceipt(true)}
+                  className="w-full py-3 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-caps text-xs font-bold transition-all flex items-center justify-center gap-2 border border-outline/15 shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-sm text-primary">receipt_long</span>
+                  <span>View &amp; Print Official Receipt (80mm / A4)</span>
+                </button>
+              )}
+
               <Link
                 to={isGiftCard ? "/gift-cards" : "/profile"}
                 className="w-full block bg-primary text-on-primary font-label-caps text-label-caps py-3.5 rounded-xl hover:bg-primary-container transition-all shadow-md"
@@ -165,7 +181,7 @@ export default function CheckoutCallback() {
           </div>
         )}
 
-        {/* 3. Pending State (e.g. Mobile Money prompt) */}
+        {/* 3. Pending State */}
         {status === 'pending' && (
           <div className="flex flex-col items-center">
             <div className="w-16 h-16 bg-amber-500/20 text-amber-500 rounded-full flex items-center justify-center mb-4 animate-pulse">
@@ -179,17 +195,6 @@ export default function CheckoutCallback() {
               If you paid via Mobile Money, please enter your PIN on your phone to complete the transaction.
             </p>
 
-            <div className="w-full bg-surface-container-low rounded-xl p-4 text-left border border-outline/10 mb-6 text-xs space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-secondary">Order Reference:</span>
-                <span className="font-mono text-on-surface">{orderMerchantReference}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-secondary">Status:</span>
-                <span className="text-amber-500 font-bold">Pending Approval</span>
-              </div>
-            </div>
-
             <div className="w-full space-y-2.5">
               <button
                 type="button"
@@ -199,19 +204,20 @@ export default function CheckoutCallback() {
               >
                 {rechecking ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin" />
+                    <span className="w-4 h-4 border-2 border-on-primary/20 border-t-on-primary rounded-full animate-spin" />
                     <span>Re-checking with Pesapal...</span>
                   </>
                 ) : (
                   <>
                     <span className="material-symbols-outlined text-sm">refresh</span>
-                    <span>I've Entered My PIN — Re-check</span>
+                    <span>I have Approved with PIN - Confirm Now</span>
                   </>
                 )}
               </button>
+              
               <Link
                 to="/cart"
-                className="w-full block bg-surface-container-low text-secondary font-label-caps text-xs py-3 rounded-xl border border-outline/10 hover:text-on-surface transition-colors"
+                className="w-full block bg-surface-container-low text-secondary font-label-caps text-xs py-3 rounded-xl border border-outline/10 hover:text-on-surface hover:bg-surface-container transition-colors"
               >
                 Return to Cart
               </Link>
@@ -219,7 +225,7 @@ export default function CheckoutCallback() {
           </div>
         )}
 
-        {/* 4. Error / Failed State */}
+        {/* 4. Error State */}
         {status === 'error' && (
           <div className="flex flex-col items-center">
             <div className="w-16 h-16 bg-error/20 text-error rounded-full flex items-center justify-center mb-4">
@@ -227,25 +233,23 @@ export default function CheckoutCallback() {
             </div>
             
             <h2 className="font-headline-md text-headline-md text-on-surface mb-2">
-              Payment Verification Failed
+              Payment Verification Incomplete
             </h2>
-            <p className="font-body-md text-secondary text-sm mb-6">
-              {errorMessage || 'We were unable to verify this transaction with Pesapal. If you were charged, our concierge team will assist you.'}
+            <p className="font-body-md text-secondary text-sm mb-6 max-w-sm">
+              {errorMessage || 'We could not confirm the settlement for this transaction.'}
             </p>
 
             <div className="w-full space-y-2.5">
               <button
                 type="button"
                 onClick={() => verifyPayment(true)}
-                disabled={rechecking}
-                className="w-full bg-primary text-on-primary font-label-caps text-xs py-3.5 rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                className="w-full bg-primary text-on-primary font-label-caps text-label-caps py-3.5 rounded-xl hover:opacity-90 transition-opacity"
               >
-                <span className="material-symbols-outlined text-sm">refresh</span>
-                <span>Retry Verification</span>
+                Try Verifying Again
               </button>
               <Link
                 to="/cart"
-                className="w-full block bg-surface-container-low text-on-surface font-label-caps text-xs py-3 rounded-xl border border-outline/10 hover:bg-surface-container transition-colors"
+                className="w-full block bg-surface-container-low text-secondary font-label-caps text-xs py-3 rounded-xl border border-outline/10 hover:text-on-surface hover:bg-surface-container transition-colors"
               >
                 Return to Cart
               </Link>
@@ -254,6 +258,15 @@ export default function CheckoutCallback() {
         )}
 
       </div>
+
+      {/* Official Receipt Dialog */}
+      {showReceipt && receiptData && (
+        <ReceiptModal
+          isOpen={showReceipt}
+          onClose={() => setShowReceipt(false)}
+          data={receiptData}
+        />
+      )}
     </main>
   );
 }
