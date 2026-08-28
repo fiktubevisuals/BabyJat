@@ -82,7 +82,7 @@ service cloud.firestore {
     // Orders - Client can read their own, Admin can read all
     match /orders/{orderId} {
       allow read: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && request.resource.data.clientId == request.auth.uid;
+      allow create: if (isSignedIn() && request.resource.data.clientId == request.auth.uid && request.resource.data.status in ['pending', 'pending_payment']) || isAdmin();
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
@@ -127,8 +127,8 @@ service cloud.firestore {
 
     // Gift Cards & Digital Vouchers
     match /giftcards/{cardId} {
-      allow read: if true; // Allow verifying code (would need better security in prod)
-      allow create: if true;
+      allow read: if true; // Allow verifying code
+      allow create: if (isSignedIn() && request.resource.data.status == 'pending_payment') || isAdmin();
       allow update, delete: if isAdmin();
     }
 

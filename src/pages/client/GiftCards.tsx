@@ -66,32 +66,13 @@ export default function GiftCards() {
         senderEmail: user.email,
         senderId: user.uid,
         giftNote,
-        status: 'active',
+        status: 'pending_payment',
         createdAt: serverTimestamp(),
       };
 
       await setDoc(doc(db, 'giftcards', cardCode), cardData);
 
-      // Trigger Automated Digital Gift Card Email
-      try {
-        await fetch('/api/email/send-giftcard-confirmation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            recipientEmail: recipientEmail || user.email,
-            recipientName: recipientName || 'Special Recipient',
-            senderName: senderName || user.displayName || 'A Friend',
-            senderEmail: user.email,
-            cardCode,
-            amount: activeAmount,
-            giftNote
-          })
-        });
-      } catch (emailErr) {
-        console.warn("Automated gift card email trigger failed silently:", emailErr);
-      }
-
-      // Trigger checkout call
+      // Trigger checkout call with Pesapal gateway
       const res = await fetch('/api/pesapal/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

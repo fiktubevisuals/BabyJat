@@ -8,6 +8,7 @@ import {
   sendGiftCardConfirmationEmail 
 } from "./server/emailService";
 import { dispatchAutomatedReminder, ReminderPayload } from "./server/reminderService";
+import { verifyAndFulfillTransaction } from "./server/paymentVerification";
 
 dotenv.config();
 
@@ -90,7 +91,7 @@ app.post("/api/pesapal/checkout", async (req, res) => {
     if (!process.env.PESAPAL_CONSUMER_KEY || !process.env.PESAPAL_CONSUMER_SECRET) {
       console.warn("Pesapal credentials not found. Returning a mock URL for development.");
       return res.json({ 
-        redirect_url: `/checkout/success?order_tracking_id=mock_${orderId}`,
+        redirect_url: `/checkout/callback?OrderTrackingId=mock_${orderId}&OrderMerchantReference=${orderId}`,
         mock: true
       });
     }
@@ -440,38 +441,48 @@ app.get("/api/pesapal/ipn", async (req, res) => {
   }
 
   try {
-    const token = await getPesapalToken();
-    const url = `${getPesapalBaseUrl()}/api/Transactions/GetTransactionStatus?orderTrackingId=${OrderTrackingId}`;
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    });
+    const result = await verifyAndFulfillTransaction(
+      String(OrderTrackingId),
+      String(OrderMerchantReference)
+    );
+    console.log('[Pesapal IPN] Fulfill result:', result);
 
-    if (response.ok) {
-      const statusData = await response.json();
-      console.log('Pesapal Transaction Status:', statusData);
-      
-      // In a real app, you would verify the payment status here and update Firestore:
-      // statusData.payment_status_description === 'Completed'
-      // statusData.amount
-      // e.g., admin.firestore().collection('orders').doc(OrderMerchantReference).update({ status: 'completed' })
-    }
-
-    // Acknowledge receipt of IPN
+    // Acknowledge receipt of IPN to Pesapal
     res.json({
       orderNotificationType: OrderNotificationType,
       orderTrackingId: OrderTrackingId,
       orderMerchantReference: OrderMerchantReference,
-      status: 200
+      status: 200,
+      fulfilled: result.success
     });
   } catch (error) {
     console.error('IPN processing error:', error);
     res.status(500).send('Internal Server Error');
+  }
+});
+
+// 4. Secure Client Verification Callback Endpoint
+app.post("/api/pesapal/verify-payment", async (req, res) => {
+  try {
+    const { orderTrackingId, orderMerchantReference } = req.body;
+
+    if (!orderMerchantReference) {
+      return res.status(400).json({ error: "Missing orderMerchantReference" });
+    }
+
+    const result = await verifyAndFulfillTransaction(
+      String(orderTrackingId || ''),
+      String(orderMerchantReference)
+    );
+
+    res.json(result);
+  } catch (err: any) {
+    console.error("Payment Verification API Error:", err);
+    res.status(500).json({
+      success: false,
+      status: 'FAILED',
+      message: err.message || "Failed to verify transaction"
+    });
   }
 });
 

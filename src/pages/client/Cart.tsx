@@ -56,8 +56,8 @@ export default function Cart() {
 
       if (gcSnap.exists()) {
         const gcData = gcSnap.data();
-        if (gcData.status === 'redeemed' || (gcData.balance || 0) <= 0) {
-          setPromoError('This gift card has already been redeemed.');
+        if (gcData.status !== 'active' || (gcData.balance || 0) <= 0) {
+          setPromoError(gcData.status === 'pending_payment' ? 'This gift card is pending payment confirmation.' : 'This gift card is not active or has already been redeemed.');
           return;
         }
         const cardBalance = gcData.balance || gcData.amount || 0;
@@ -89,6 +89,8 @@ export default function Cart() {
     try {
       const orderData = {
         clientId: user.uid,
+        clientName: user.displayName || 'Valued Client',
+        email: user.email,
         items: items.map(item => ({
           productId: item.id,
           name: item.name,
@@ -103,24 +105,6 @@ export default function Cart() {
       };
 
       const docRef = await addDoc(collection(db, 'orders'), orderData);
-      
-      // Trigger Automated Order Confirmation Email
-      try {
-        await fetch('/api/email/send-order-confirmation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: user.email,
-            clientName: user.displayName || 'Valued Client',
-            orderId: docRef.id,
-            items: items.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
-            total: finalTotal,
-            shippingAddress: `${address}, ${city}`
-          })
-        });
-      } catch (emailErr) {
-        console.warn("Automated order email trigger failed silently:", emailErr);
-      }
 
       // Call backend to initialize Pesapal payment
       const nameParts = user.displayName ? user.displayName.split(' ') : ['Customer'];
