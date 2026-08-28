@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import rateLimit from "express-rate-limit";
 import { 
   sendBookingConfirmationEmail, 
   sendOrderConfirmationEmail, 
@@ -20,6 +21,71 @@ const PORT = 3000;
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// --- SECURITY: MULTI-TIERED RATE LIMITING & ANTI-ABUSE POLICIES ---
+
+// 1. AI Studio & Gemini Token Limiter (15 requests per 5 min per IP)
+const aiLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "AI Studio rate limit exceeded. Please wait a few moments before generating another luxury hairstyle transformation preview.",
+    retryAfterSeconds: 300
+  }
+});
+
+// 2. Payment & Verification Limiter (30 operations per 5 min per IP)
+const paymentLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Payment verification rate limit exceeded. Please wait a moment before trying again."
+  }
+});
+
+// 3. Automated SMS & WhatsApp Messaging Limiter (20 dispatches per 5 min per IP)
+const messagingLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Messaging rate limit reached. Please wait before dispatching more SMS or WhatsApp alerts."
+  }
+});
+
+// 4. Daily EOD Settlement Limiter (12 compilation cycles per 5 min per IP)
+const eodLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "EOD Settlement rate limit exceeded. Please wait before compiling another daily report."
+  }
+});
+
+// 5. Global API Baseline Limiter (250 requests per 15 min per IP)
+const globalApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 250,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too many requests to the BabyJat API. Please try again shortly."
+  }
+});
+
+// Apply Rate Limiters
+app.use("/api/", globalApiLimiter);
+app.use("/api/ai/", aiLimiter);
+app.use("/api/pesapal/", paymentLimiter);
+app.use("/api/reminders/", messagingLimiter);
+app.use("/api/eod/", eodLimiter);
 
 // --- PESAPAL API INTEGRATION ---
 
