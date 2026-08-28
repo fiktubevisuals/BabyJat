@@ -38,6 +38,15 @@ interface AutomatedRemindersManagerProps {
   usersMap: Record<string, any>;
 }
 
+interface CronStats {
+  lastRunAt: string | null;
+  lastScannedCount: number;
+  lastDispatchedCount: number;
+  totalDispatchedAllTime: number;
+  isRunning: boolean;
+  intervalMinutes: number;
+}
+
 export function AutomatedRemindersManager({ appointments, usersMap }: AutomatedRemindersManagerProps) {
   const [reminderLogs, setReminderLogs] = useState<ReminderLog[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -45,6 +54,27 @@ export function AutomatedRemindersManager({ appointments, usersMap }: AutomatedR
   const [previewApt, setPreviewApt] = useState<Appointment | null>(null);
   const [sendingSingleId, setSendingSingleId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'due_24h' | 'sent' | 'confirmed'>('due_24h');
+  const [cronStats, setCronStats] = useState<CronStats | null>(null);
+  const [triggeringCron, setTriggeringCron] = useState(false);
+
+  // Poll server cron stats
+  const fetchCronStats = async () => {
+    try {
+      const res = await fetch('/api/reminders/cron-status');
+      if (res.ok) {
+        const data = await res.json();
+        setCronStats(data);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    fetchCronStats();
+    const interval = setInterval(fetchCronStats, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Listen to reminders collection in Firestore for real-time logs
   useEffect(() => {
@@ -202,8 +232,60 @@ export function AutomatedRemindersManager({ appointments, usersMap }: AutomatedR
     }
   };
 
+  // Trigger Autonomous Background Cron Scan via Server Endpoint
+  const handleTriggerServerCron = async () => {
+    setTriggeringCron(true);
+    try {
+      const res = await fetch('/api/reminders/run-cron', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setCronStats(data.stats);
+        alert(`⚡ Autonomous Cron Triggered! Scanned ${data.scannedCount} appointments, dispatched ${data.dispatchedCount} 24h reminders.`);
+      } else {
+        throw new Error(data.error || 'Failed to trigger cron');
+      }
+    } catch (err: any) {
+      alert('Cron Trigger Error: ' + err.message);
+    } finally {
+      setTriggeringCron(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Autonomous Background Worker Status Banner */}
+      <div className="glass-panel p-5 rounded-2xl bg-surface-container-low border border-primary/20 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-lg ring-4 ring-emerald-500/10">
+            <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm text-on-surface">Scheduled 24h Cron Worker</span>
+              <span className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/20 uppercase tracking-wider">
+                Active • Every {cronStats?.intervalMinutes || 30}m
+              </span>
+            </div>
+            <p className="text-xs text-secondary mt-0.5">
+              Last Scan: <strong className="text-on-surface">{cronStats?.lastRunAt ? new Date(cronStats.lastRunAt).toLocaleTimeString() : 'Recently'}</strong> • 
+              Scanned: <strong className="text-primary">{cronStats?.lastScannedCount || 0}</strong> • 
+              Total Dispatched All-Time: <strong className="text-primary">{cronStats?.totalDispatchedAllTime || reminderLogs.length}</strong>
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleTriggerServerCron}
+          disabled={triggeringCron}
+          className="bg-primary text-on-primary px-4 py-2 rounded-xl font-label-caps text-xs font-bold hover:bg-primary-container transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 shrink-0"
+        >
+          <span className={`material-symbols-outlined text-sm ${triggeringCron ? 'animate-spin' : ''}`}>
+            {triggeringCron ? 'sync' : 'bolt'}
+          </span>
+          <span>{triggeringCron ? 'Executing Cron...' : 'Run Server Cron Now'}</span>
+        </button>
+      </div>
+
       {/* Top Banner Control Bar */}
       <div className="glass-panel p-6 rounded-2xl ambient-glow bg-gradient-to-r from-primary-container/20 via-surface to-secondary-container/20 border border-primary/20">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -232,10 +314,10 @@ export function AutomatedRemindersManager({ appointments, usersMap }: AutomatedR
             <button
               onClick={handleRunBatchScan}
               disabled={scanning}
-              className="bg-primary text-on-primary px-4 py-2.5 rounded-xl font-label-caps text-xs hover:bg-primary-container transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+              className="bg-surface-container-high text-on-surface border border-outline/20 px-4 py-2.5 rounded-xl font-label-caps text-xs hover:bg-surface-container-highest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
             >
-              <span className="material-symbols-outlined text-sm">{scanning ? 'sync' : 'bolt'}</span>
-              {scanning ? 'Scanning & Dispatching...' : 'Run 24h Auto-Scan & Dispatch'}
+              <span className="material-symbols-outlined text-sm">{scanning ? 'sync' : 'refresh'}</span>
+              {scanning ? 'Scanning & Dispatching...' : 'Scan Active Appointments List'}
             </button>
           </div>
         </div>

@@ -9,6 +9,7 @@ import {
 } from "./server/emailService";
 import { dispatchAutomatedReminder, ReminderPayload } from "./server/reminderService";
 import { verifyAndFulfillTransaction } from "./server/paymentVerification";
+import { startReminderCron, execute24hReminderScan, getReminderCronStats } from "./server/reminderCron";
 
 dotenv.config();
 
@@ -597,10 +598,10 @@ app.post("/api/reminders/send", async (req, res) => {
   }
 });
 
-// 2. Batch 24-hour scan and auto-trigger reminders
+// 2. Batch 24-hour scan and auto-trigger reminders (Legacy / Manual Array)
 app.post("/api/reminders/scan-24h", async (req, res) => {
   try {
-    const { appointments } = req.body; // array of appointments passed from client/admin context or Firestore
+    const { appointments } = req.body;
     const results = [];
 
     if (Array.isArray(appointments)) {
@@ -630,7 +631,52 @@ app.post("/api/reminders/scan-24h", async (req, res) => {
   }
 });
 
+// 3. Autonomous Cron Worker Status Endpoint
+app.get("/api/reminders/cron-status", (req, res) => {
+  res.json(getReminderCronStats());
+});
+
+// 4. On-Demand Autonomous 24h Scan Execution
+app.post("/api/reminders/run-cron", async (req, res) => {
+  try {
+    const result = await execute24hReminderScan();
+    res.json({
+      success: true,
+      message: "24-hour autonomous reminder scan executed successfully",
+      ...result,
+      stats: getReminderCronStats()
+    });
+  } catch (err: any) {
+    console.error("Manual Cron Trigger Error:", err);
+    res.status(500).json({ error: err.message || "Failed to execute autonomous reminder scan" });
+  }
+});
+
+// 5. Client Action from Reminder Link (e.g. Confirm or Reschedule)
+app.post("/api/reminders/client-action", async (req, res) => {
+  try {
+    const { appointmentId, action } = req.body;
+    if (!appointmentId || !action) {
+      return res.status(400).json({ error: "Missing appointmentId or action" });
+    }
+
+    // Acknowledge action
+    res.json({
+      success: true,
+      appointmentId,
+      action,
+      message: action === 'confirm' ? 'Appointment confirmed by client' : 'Reschedule request logged'
+    });
+  } catch (err: any) {
+    console.error("Reminder Client Action Error:", err);
+    res.status(500).json({ error: err.message || "Failed to process reminder action" });
+  }
+});
+
 async function startServer() {
+  // Start autonomous 24h reminder background cron worker (running every 30 mins)
+  startReminderCron(30);
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
