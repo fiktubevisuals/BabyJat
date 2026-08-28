@@ -15,6 +15,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     serviceName: string;
     price: number;
     initialShade: string;
+    durationMinutes?: number;
   } | null>(null);
 
   useEffect(() => {
@@ -111,7 +112,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
           setBookingDetails({
             serviceName: `${styleName} (${shadeName})`,
             price: numericPrice,
-            initialShade: shadeName
+            initialShade: shadeName,
+            durationMinutes: 90
           });
         }}
       />
@@ -122,6 +124,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
           onClose={() => setBookingDetails(null)}
           serviceName={bookingDetails.serviceName}
           price={bookingDetails.price}
+          durationMinutes={bookingDetails.durationMinutes || 90}
           initialShade={bookingDetails.initialShade}
         />
       )}

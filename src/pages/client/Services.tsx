@@ -21,7 +21,7 @@ interface Service {
 
 export default function Services() {
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedService, setSelectedService] = useState<{name: string, price: number} | null>(null);
+  const [selectedService, setSelectedService] = useState<{name: string, price: number, durationMinutes?: number} | null>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -39,12 +39,12 @@ export default function Services() {
     return () => unsub();
   }, []);
 
-  const handleBookClick = (name: string, price: number) => {
+  const handleBookClick = (name: string, price: number, durationMinutes?: number) => {
     if (!user) {
       navigate('/login', { state: { from: { pathname: '/services' } } });
       return;
     }
-    setSelectedService({ name, price });
+    setSelectedService({ name, price, durationMinutes });
     setModalOpen(true);
   };
 
@@ -129,7 +129,10 @@ export default function Services() {
                         <span className="font-label-caps text-label-caps text-secondary flex items-center gap-1">
                           <span className="material-symbols-outlined text-[14px]">schedule</span> {service.durationMinutes} mins
                         </span>
-                        <button onClick={() => handleBookClick(service.name, service.price)} className="bg-primary text-on-primary px-8 py-2.5 rounded-full font-label-caps text-label-caps hover:bg-surface-tint transition-colors active:scale-95 shadow-sm">
+                        <button 
+                          onClick={() => handleBookClick(service.name, service.price, service.durationMinutes)} 
+                          className="bg-primary text-on-primary px-8 py-2.5 rounded-full font-label-caps text-label-caps hover:bg-surface-tint transition-colors active:scale-95 shadow-sm"
+                        >
                           Book Now
                         </button>
                       </div>
@@ -162,6 +165,7 @@ export default function Services() {
           onClose={() => setModalOpen(false)} 
           serviceName={selectedService.name} 
           price={selectedService.price} 
+          durationMinutes={selectedService.durationMinutes}
         />
       )}
     </main>
