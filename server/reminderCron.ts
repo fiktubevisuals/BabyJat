@@ -10,7 +10,7 @@ import {
   setDoc, 
   serverTimestamp 
 } from 'firebase/firestore';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth, signInAnonymously, signInWithEmailAndPassword } from 'firebase/auth';
 import { dispatchAutomatedReminder, ReminderPayload, ReminderResult } from './reminderService';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -22,9 +22,20 @@ const auth = getAuth(app);
 async function ensureServerAuth() {
   if (!auth.currentUser) {
     try {
-      await signInAnonymously(auth);
-    } catch {
-      // session fallback
+      if (process.env.SERVER_FIREBASE_EMAIL && process.env.SERVER_FIREBASE_PASSWORD) {
+        await signInWithEmailAndPassword(auth, process.env.SERVER_FIREBASE_EMAIL, process.env.SERVER_FIREBASE_PASSWORD);
+        console.log('[Reminder Cron] Successfully authenticated using server email credentials.');
+      } else {
+        await signInAnonymously(auth);
+        console.log('[Reminder Cron] Successfully authenticated anonymously.');
+      }
+    } catch (err: any) {
+      console.error('[Reminder Cron] Error authenticating to Firebase:', err.code || err.message);
+      if (err.code === 'auth/admin-restricted-operation' || err.code === 'auth/operation-not-allowed') {
+        console.error('CRITICAL: Anonymous Authentication is disabled in your Firebase project!');
+        console.error('Please go to Firebase Console > Authentication > Sign-in method, and enable "Anonymous".');
+        console.error('Alternatively, create a Firebase user and provide SERVER_FIREBASE_EMAIL and SERVER_FIREBASE_PASSWORD in your .env file.');
+      }
     }
   }
 }

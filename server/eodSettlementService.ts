@@ -9,7 +9,7 @@ import {
   setDoc, 
   serverTimestamp 
 } from 'firebase/firestore';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth, signInAnonymously, signInWithEmailAndPassword } from 'firebase/auth';
 import nodemailer from 'nodemailer';
 import twilio from 'twilio';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -22,9 +22,19 @@ const auth = getAuth(app);
 async function ensureServerAuth() {
   if (!auth.currentUser) {
     try {
-      await signInAnonymously(auth);
-    } catch {
-      // fallback
+      if (process.env.SERVER_FIREBASE_EMAIL && process.env.SERVER_FIREBASE_PASSWORD) {
+        await signInWithEmailAndPassword(auth, process.env.SERVER_FIREBASE_EMAIL, process.env.SERVER_FIREBASE_PASSWORD);
+        console.log('[EOD Settlement] Successfully authenticated using server email credentials.');
+      } else {
+        await signInAnonymously(auth);
+        console.log('[EOD Settlement] Successfully authenticated anonymously.');
+      }
+    } catch (err: any) {
+      console.error('[EOD Settlement] Error authenticating to Firebase:', err.code || err.message);
+      if (err.code === 'auth/admin-restricted-operation' || err.code === 'auth/operation-not-allowed') {
+        console.error('CRITICAL: Anonymous Authentication is disabled in your Firebase project!');
+        console.error('Please go to Firebase Console > Authentication > Sign-in method, and enable "Anonymous".');
+      }
     }
   }
 }

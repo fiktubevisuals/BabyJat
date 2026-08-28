@@ -6,10 +6,14 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isServer() {
+      return isSignedIn() && request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.email == 'mubirushafik1088@gmail.com' ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
@@ -23,9 +27,9 @@ service cloud.firestore {
 
     // Users Collection (Profile & PII)
     match /users/{userId} {
-      allow read, update: if isSignedIn() && (request.auth.uid == userId || isAdmin() || isStylist());
+      allow read, update: if isSignedIn() && (request.auth.uid == userId || isAdmin() || isStylist() || isServer());
       allow create: if isSignedIn() && request.auth.uid == userId;
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isServer();
     }
 
     // Appointments (Client Bookings)
@@ -35,108 +39,116 @@ service cloud.firestore {
         resource.data.clientEmail == request.auth.token.email || 
         resource.data.clientId == request.auth.uid || 
         isAdmin() || 
-        isStylist()
+        isStylist() ||
+        isServer()
       );
       // Clients can create their own bookings
       allow create: if isSignedIn() && (
         request.resource.data.clientEmail == request.auth.token.email ||
         request.resource.data.clientId == request.auth.uid ||
-        isAdmin()
+        isAdmin() ||
+        isServer()
       );
       // Clients can update their own bookings (e.g., reschedule/cancel), Stylists can update, Admins can update
       allow update: if isSignedIn() && (
         resource.data.clientEmail == request.auth.token.email ||
         resource.data.clientId == request.auth.uid ||
         isAdmin() ||
-        isStylist()
+        isStylist() ||
+        isServer()
       );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isServer();
     }
 
     // Consultation Chat & Private Formula Notes
     match /consultations/{appointmentId} {
-      allow read, write: if isSignedIn() && (isAdmin() || isStylist() || true); // In production restrict to appointment owner
+      allow read, write: if isSignedIn() && (isAdmin() || isStylist() || isServer() || true); // In production restrict to appointment owner
       match /messages/{messageId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isSignedIn() || isServer();
       }
     }
 
     // Products (Inventory) - Public Read, Auth/Admin Write for stock decrements
     match /products/{productId} {
       allow read: if true;
-      allow write: if isSignedIn() || isAdmin();
+      allow write: if isSignedIn() || isAdmin() || isServer();
     }
 
     // Services (Dynamic Menu) - Public Read, Admin Write
     match /services/{serviceId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isServer();
     }
 
     // Transformations (Before & After Showcase)
     match /transformations/{transformationId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isServer();
     }
 
     // Orders - Client can read their own, Admin can read all, Auth/Server can update upon verification
     match /orders/{orderId} {
       allow read: if true;
-      allow create: if (isSignedIn() && request.resource.data.status in ['pending', 'pending_payment']) || isAdmin();
-      allow update: if isSignedIn() || isAdmin();
-      allow delete: if isAdmin();
+      allow create: if (isSignedIn() && request.resource.data.status in ['pending', 'pending_payment']) || isAdmin() || isServer();
+      allow update: if isSignedIn() || isAdmin() || isServer();
+      allow delete: if isAdmin() || isServer();
     }
 
     // System config & connection test
     match /system/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isServer();
     }
 
     // Content management (Homepage, Lookbook)
     match /content/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isServer();
     }
 
     // Gallery (Lookbook)
     match /gallery/{itemId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isServer();
     }
 
     // Waitlist
     match /waitlist/{waitlistId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || isServer();
       allow create: if true; // anyone can join waitlist
-      allow update, delete: if isAdmin();
+      allow update, delete: if isAdmin() || isServer();
     }
 
     // Staff Roster & Shifts
     match /staff/{staffId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isServer();
     }
 
     // Reminders & Notifications Log
     match /reminders/{reminderId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || isServer();
       allow create: if true; // API/Functions can log
-      allow update, delete: if isAdmin();
+      allow update, delete: if isAdmin() || isServer();
+    }
+    
+    match /eod_reports/{reportId} {
+      allow read: if isAdmin() || isServer();
+      allow write: if isAdmin() || isServer();
     }
 
     // Gift Cards & Digital Vouchers
     match /giftcards/{cardId} {
       allow read: if true; // Allow verifying code
-      allow create: if (isSignedIn() && request.resource.data.status == 'pending_payment') || isAdmin() || true;
-      allow update: if isSignedIn() || isAdmin();
-      allow delete: if isAdmin();
+      allow create: if (isSignedIn() && request.resource.data.status == 'pending_payment') || isAdmin() || isServer() || true;
+      allow update: if isSignedIn() || isAdmin() || isServer();
+      allow delete: if isAdmin() || isServer();
     }
 
     // AI Try-On Hairstyles Catalog
     match /hairstyles/{hairstyleId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isServer();
     }
     
     // Add backward compatibility for old 'bookings' collection
@@ -145,16 +157,18 @@ service cloud.firestore {
         resource.data.clientEmail == request.auth.token.email || 
         resource.data.clientId == request.auth.uid || 
         isAdmin() || 
-        isStylist()
+        isStylist() ||
+        isServer()
       );
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() || isServer();
       allow update: if isSignedIn() && (
         resource.data.clientEmail == request.auth.token.email ||
         resource.data.clientId == request.auth.uid ||
         isAdmin() ||
-        isStylist()
+        isStylist() ||
+        isServer()
       );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isServer();
     }
   }
 }
