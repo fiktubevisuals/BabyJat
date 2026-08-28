@@ -6,7 +6,7 @@ import { db, storage } from '../../lib/firebase';
 interface Product {
   id: string;
   name: string;
-  category: 'retail' | 'backbar';
+  category: string;
   price: number;
   stock: number;
   sku: string;
@@ -180,7 +180,7 @@ export default function Inventory() {
   const lowStock = products.filter(p => p.stock <= lowStockThreshold).length;
 
   const filteredProducts = products.filter(p => {
-    if (activeCategoryFilter === 'retail') return p.category === 'retail';
+    if (activeCategoryFilter === 'retail') return p.category !== 'backbar';
     if (activeCategoryFilter === 'backbar') return p.category === 'backbar';
     if (activeCategoryFilter === 'low_stock') return p.stock <= lowStockThreshold;
     return true;
@@ -257,7 +257,7 @@ export default function Inventory() {
             activeCategoryFilter === 'retail' ? 'bg-primary text-on-primary font-bold' : 'bg-surface-container text-secondary hover:text-on-surface'
           }`}
         >
-          Retail ({products.filter(p => p.category === 'retail').length})
+          Retail ({products.filter(p => p.category !== 'backbar').length})
         </button>
         <button
           onClick={() => setActiveCategoryFilter('backbar')}
@@ -386,9 +386,13 @@ export default function Inventory() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block font-label-caps text-xs text-secondary mb-1">Category</label>
-                  <select value={formData.category || 'retail'} onChange={(e) => setFormData({...formData, category: e.target.value as any})} className="w-full px-3 py-2 border border-outline/20 rounded-lg focus:outline-primary bg-surface-container-lowest text-sm">
-                    <option value="retail">Retail</option>
-                    <option value="backbar">Backbar</option>
+                  <select value={formData.category || 'retail'} onChange={(e) => setFormData({...formData, category: e.target.value})} className="w-full px-3 py-2 border border-outline/20 rounded-lg focus:outline-primary bg-surface-container-lowest text-sm">
+                    <option value="retail">Retail (General)</option>
+                    <option value="Hair Care">Hair Care</option>
+                    <option value="Accessories">Accessories</option>
+                    <option value="Extensions">Extensions</option>
+                    <option value="Styling Tools">Styling Tools</option>
+                    <option value="backbar">Backbar (Salon Use)</option>
                   </select>
                 </div>
                 <div>
