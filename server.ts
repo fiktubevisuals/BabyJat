@@ -10,6 +10,8 @@ import {
 import { dispatchAutomatedReminder, ReminderPayload } from "./server/reminderService";
 import { verifyAndFulfillTransaction } from "./server/paymentVerification";
 import { startReminderCron, execute24hReminderScan, getReminderCronStats } from "./server/reminderCron";
+import { startEODCron, getEODCronStats } from "./server/eodCron";
+import { compileDailyEODReport, dispatchDailyEODSettlement } from "./server/eodSettlementService";
 
 dotenv.config();
 
@@ -673,9 +675,48 @@ app.post("/api/reminders/client-action", async (req, res) => {
   }
 });
 
+// 6. --- DAILY EOD (END-OF-DAY) SETTLEMENT ENDPOINTS ---
+
+// EOD Cron Status
+app.get("/api/eod/status", (req, res) => {
+  res.json(getEODCronStats());
+});
+
+// Live Preview of Today's EOD Figures
+app.get("/api/eod/preview", async (req, res) => {
+  try {
+    const targetDate = typeof req.query.date === 'string' ? req.query.date : undefined;
+    const report = await compileDailyEODReport(targetDate);
+    res.json({ success: true, report });
+  } catch (err: any) {
+    console.error("EOD Preview Error:", err);
+    res.status(500).json({ error: err.message || "Failed to generate EOD preview" });
+  }
+});
+
+// Manual / Triggered EOD Settlement Compilation & Dispatch
+app.post("/api/eod/run-report", async (req, res) => {
+  try {
+    const { targetDate } = req.body;
+    const report = await dispatchDailyEODSettlement(targetDate);
+    res.json({
+      success: true,
+      message: `Daily EOD Settlement Report compiled and dispatched for ${report.reportDate}`,
+      report,
+      stats: getEODCronStats()
+    });
+  } catch (err: any) {
+    console.error("EOD Run Error:", err);
+    res.status(500).json({ error: err.message || "Failed to execute EOD settlement" });
+  }
+});
+
 async function startServer() {
   // Start autonomous 24h reminder background cron worker (running every 30 mins)
   startReminderCron(30);
+
+  // Start autonomous 20:30 EOD Settlement background worker (checking every 5 mins)
+  startEODCron(5);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
